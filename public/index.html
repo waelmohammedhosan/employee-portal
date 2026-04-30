@@ -5,6 +5,62 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>بوابة الموظفين - مصنع الريس</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* تحسينات إضافية للصورة */
+        .reports-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .reports-table th {
+            background: #34495e;
+            color: white;
+            padding: 14px 8px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .reports-table td {
+            padding: 12px 8px;
+            text-align: center;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+        
+        .reports-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #1c2833;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .export-btn {
+            background: #4a148c;
+            padding: 10px 20px;
+            margin-left: 10px;
+        }
+        
+        .export-btn:hover {
+            background: #6a1b9a;
+        }
+    </style>
 </head>
 <body>
     <!-- شاشة تسجيل الدخول -->
@@ -13,7 +69,7 @@
             <img src="images/logo.png" alt="شعار المصنع" class="logo-image" onerror="this.style.display='none'">
             <div class="factory-name">مصنع الريس لإنتاج وتوزيع الفحم</div>
         </div>
-        <div class="subtitle">بوابة الموظفين</div>
+        <div class="subtitle">اعداد وتطوير : وائل محمد</div>
         
         <div class="input-group">
             <label>📱 رقم الهاتف</label>
@@ -34,11 +90,11 @@
     <div id="dashboard-screen" class="dashboard-container hidden">
         <div class="dashboard-header">
             <div class="employee-info">
-                <h2 id="employee-name">👤 اسم الموظف</h2>
-                <p id="employee-phone">📱 رقم الهاتف</p>
+                <h2 id="employee-name">👤 اسمي</h2>
+                <p id="employee-phone">📱 رقمي</p>
             </div>
             <div>
-                <button class="export-btn" onclick="exportReportAsImage()">📸 حفظ كصورة</button>
+                <button class="export-btn" onclick="exportReportAsImage()">📸 حفظ التقرير كصورة</button>
                 <button class="logout-btn" onclick="logout()">🚪 تسجيل خروج</button>
             </div>
         </div>
@@ -82,7 +138,7 @@
                     </tr>
                 </thead>
                 <tbody id="reports-body">
-                    <tr><td colspan="8" class="loading">جاري التحميل...</td></tr>
+                    <tr><td colspan="8" class="loading">جاري تحميل سجل الدوام...</td></tr>
                 </tbody>
             </table>
         </div>
