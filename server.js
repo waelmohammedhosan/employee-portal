@@ -14,7 +14,6 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // ============= مسار قاعدة البيانات =============
-// استخدام قاعدة البيانات المرفوعة مع المشروع
 function getDbPath() {
   return path.join(__dirname, 'factory_pro.db');
 }
@@ -22,10 +21,8 @@ function getDbPath() {
 const dbPath = getDbPath();
 console.log('📁 مسار قاعدة البيانات:', dbPath);
 
-// التحقق من وجود قاعدة البيانات
 if (!fs.existsSync(dbPath)) {
-  console.error('❌ قاعدة البيانات غير موجودة! يرجى رفع ملف factory_pro.db');
-  process.exit(1);
+  console.error('❌ قاعدة البيانات غير موجودة!');
 } else {
   console.log('✅ قاعدة البيانات موجودة');
 }
@@ -33,9 +30,7 @@ if (!fs.existsSync(dbPath)) {
 // ============= الاتصال بقاعدة البيانات =============
 const db = new sqlite3.Database(dbPath);
 
-// التحقق من الجداول وإضافتها إذا لم تكن موجودة
 db.serialize(() => {
-  // جدول حسابات الموظفين
   db.run(`CREATE TABLE IF NOT EXISTS employees_auth (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -44,7 +39,6 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
   
-  // جدول معلومات الموظفين
   db.run(`CREATE TABLE IF NOT EXISTS employee_info (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE,
@@ -52,7 +46,6 @@ db.serialize(() => {
     id_number TEXT
   )`);
   
-  // جدول الأرشيف (سجلات الدوام)
   db.run(`CREATE TABLE IF NOT EXISTS archive (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     arc_date TEXT,
@@ -63,17 +56,14 @@ db.serialize(() => {
     loan TEXT
   )`);
   
-  // إضافة أعمدة جديدة إذا لم تكن موجودة
   db.run("ALTER TABLE archive ADD COLUMN loan TEXT", () => {});
   
-  // إضافة حساب تجريبي إذا لم يكن موجوداً
   db.get("SELECT COUNT(*) as count FROM employees_auth", (err, row) => {
     if (row && row.count === 0) {
       const hashedPassword = bcrypt.hashSync('123123', 10);
       db.run(`INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)`,
-        ['وائل محمد', '0779966565', hashedPassword], (err) => {
-          if (!err) console.log('✅ تم إضافة حساب تجريبي: 0779966565 / 123123');
-        });
+        ['وائل محمد', '0779966565', hashedPassword]);
+      console.log('✅ تم إضافة حساب تجريبي: 0779966565 / 123123');
     }
   });
 });
@@ -92,18 +82,15 @@ app.post('/api/login', (req, res) => {
   
   db.get("SELECT * FROM employees_auth WHERE phone = ?", [phone], (err, employee) => {
     if (err) {
-      console.error('❌ خطأ في قاعدة البيانات:', err);
       return res.status(500).json({ error: 'خطأ في الخادم' });
     }
     
     if (!employee) {
-      console.log('❌ رقم الهاتف غير موجود:', phone);
       return res.status(401).json({ error: 'رقم الهاتف غير موجود' });
     }
     
     const isValid = bcrypt.compareSync(password, employee.password);
     if (!isValid) {
-      console.log('❌ كلمة مرور غير صحيحة');
       return res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
     }
     
@@ -115,20 +102,15 @@ app.post('/api/login', (req, res) => {
   });
 });
 
-// ============= API: الحصول على تقارير الموظف (سجل الدوام) =============
+// ============= API: الحصول على تقارير الموظف =============
 app.get('/api/employee/:name/reports', (req, res) => {
   const { name } = req.params;
-  
-  console.log(`📋 جلب تقارير الموظف: ${name}`);
   
   db.all(`SELECT id, arc_date, data_json, loan FROM archive WHERE emp_name = ? ORDER BY arc_date DESC`,
     [name], (err, rows) => {
       if (err) {
-        console.error('خطأ في تحميل البيانات:', err);
         return res.status(500).json({ error: 'خطأ في تحميل البيانات' });
       }
-      
-      console.log(`✅ تم جلب ${rows.length} سجل للموظف ${name}`);
       
       const reports = rows.map(row => ({
         id: row.id,
@@ -145,11 +127,8 @@ app.get('/api/employee/:name/reports', (req, res) => {
 app.get('/api/employee/:name/stats', (req, res) => {
   const { name } = req.params;
   
-  console.log(`📊 حساب إحصائيات الموظف: ${name}`);
-  
   db.all("SELECT data_json, loan FROM archive WHERE emp_name = ?", [name], (err, rows) => {
     if (err) {
-      console.error('خطأ في حساب الإحصائيات:', err);
       return res.status(500).json({ error: 'خطأ في حساب الإحصائيات' });
     }
     
@@ -159,7 +138,6 @@ app.get('/api/employee/:name/stats', (req, res) => {
       const data = JSON.parse(row.data_json);
       const loan = row.loan || '0';
       
-      // حساب ساعات العمل
       if (data.start_t && data.end_t && !data.start_t.includes('إجازة') && !data.start_t.includes('عطلة')) {
         const hours = calculateHours(data.start_t, data.end_t);
         totalHours += hours;
@@ -173,12 +151,7 @@ app.get('/api/employee/:name/stats', (req, res) => {
       }
     });
     
-    console.log(`✅ إحصائيات ${name}: ${totalHours} ساعة, ${totalOvertime} إضافي, ${totalVacation} إجازات, ${totalLoans} سلف`);
-    
-    res.json({ 
-      success: true, 
-      stats: { totalHours, totalOvertime, totalVacation, totalLoans }
-    });
+    res.json({ success: true, stats: { totalHours, totalOvertime, totalVacation, totalLoans } });
   });
 });
 
@@ -188,14 +161,35 @@ app.get('/api/employee/:name/info', (req, res) => {
   
   db.get("SELECT phone, id_number FROM employee_info WHERE name = ?", [name], (err, row) => {
     if (err) {
-      console.error('خطأ في تحميل المعلومات:', err);
       return res.status(500).json({ error: 'خطأ في تحميل المعلومات' });
     }
     res.json({ success: true, info: row || { phone: '', id_number: '' } });
   });
 });
 
-// ============= API: التحقق من وجود رقم الهاتف =============
+// ============= API: إضافة سجل دوام جديد (من تطبيق Desktop) =============
+app.post('/api/archive/add', (req, res) => {
+  const { emp_name, arc_date, data_json, prod, ret, loan } = req.body;
+  
+  console.log(`📝 إضافة سجل دوام للموظف: ${emp_name} - التاريخ: ${arc_date}`);
+  
+  if (!emp_name || !arc_date || !data_json) {
+    return res.status(400).json({ error: 'الرجاء إدخال جميع البيانات' });
+  }
+  
+  db.run(`INSERT INTO archive (emp_name, arc_date, data_json, prod, ret, loan) VALUES (?,?,?,?,?,?)`,
+    [emp_name, arc_date, data_json, prod || '0', ret || '0', loan || '0'], function(err) {
+      if (err) {
+        console.error('❌ خطأ في إضافة السجل:', err);
+        res.status(500).json({ error: err.message });
+      } else {
+        console.log('✅ تم إضافة سجل دوام جديد على السيرفر');
+        res.json({ success: true, message: 'تم إضافة السجل بنجاح', id: this.lastID });
+      }
+    });
+});
+
+// ============= API: إدارة حسابات الموظفين =============
 app.get('/api/employees/check-phone/:phone', (req, res) => {
   const { phone } = req.params;
   
@@ -208,17 +202,13 @@ app.get('/api/employees/check-phone/:phone', (req, res) => {
   });
 });
 
-// ============= API: إضافة حساب جديد =============
 app.post('/api/employees/add', (req, res) => {
   const { name, phone, password } = req.body;
-  
-  console.log('📝 محاولة إضافة حساب:', { name, phone });
   
   if (!name || !phone || !password) {
     return res.status(400).json({ error: 'الرجاء إدخال جميع البيانات' });
   }
   
-  // التحقق من وجود الرقم مسبقاً
   db.get("SELECT id FROM employees_auth WHERE phone = ?", [phone], (err, row) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -233,36 +223,26 @@ app.post('/api/employees/add', (req, res) => {
     db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
       [name, phone, hashedPassword], function(err) {
         if (err) {
-          console.error('❌ خطأ في الإضافة:', err);
           res.status(500).json({ error: err.message });
         } else {
-          console.log('✅ تم إضافة الحساب بنجاح:', name);
           res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: this.lastID });
         }
       });
   });
 });
 
-// ============= API: الحصول على جميع الحسابات =============
 app.get('/api/employees/all', (req, res) => {
-  console.log('📋 طلب الحصول على جميع الحسابات');
-  
   db.all("SELECT id, name, phone, created_at FROM employees_auth ORDER BY name", (err, rows) => {
     if (err) {
-      console.error('❌ خطأ في جلب الحسابات:', err);
       res.status(500).json({ error: err.message });
     } else {
-      console.log(`✅ تم جلب ${rows.length} حساب`);
       res.json({ success: true, accounts: rows });
     }
   });
 });
 
-// ============= API: حذف حساب =============
 app.delete('/api/employees/delete/:id', (req, res) => {
   const { id } = req.params;
-  
-  console.log('🗑️ حذف حساب ID:', id);
   
   db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
     if (err) {
@@ -273,12 +253,9 @@ app.delete('/api/employees/delete/:id', (req, res) => {
   });
 });
 
-// ============= API: تغيير كلمة المرور =============
 app.put('/api/employees/reset-password/:id', (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
-  
-  console.log('🔑 تغيير كلمة المرور للحساب ID:', id);
   
   const hashedPassword = bcrypt.hashSync(password, 10);
   
@@ -291,7 +268,6 @@ app.put('/api/employees/reset-password/:id', (req, res) => {
   });
 });
 
-// ============= API: إعداد حساب تجريبي =============
 app.get('/api/setup', (req, res) => {
   const hashedPassword = bcrypt.hashSync('123123', 10);
   db.run("INSERT OR IGNORE INTO employees_auth (name, phone, password) VALUES (?,?,?)",
@@ -302,82 +278,6 @@ app.get('/api/setup', (req, res) => {
         res.json({ success: true, message: 'تم إضافة الحساب التجريبي: 0779966565 / 123123' });
       }
     });
-});
-
-// ============= API: إضافة بيانات تجريبية (للتجربة) =============
-app.get('/api/add-sample-data', (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-  const twoDaysAgo = new Date(Date.now() - 172800000).toISOString().split('T')[0];
-  
-  const sampleData = [
-    {
-      emp_name: 'وائل محمد',
-      arc_date: twoDaysAgo,
-      data_json: JSON.stringify({
-        name: 'وائل محمد',
-        date: twoDaysAgo,
-        start_t: '08:00 AM',
-        end_t: '05:00 PM',
-        overtime: '0',
-        discount: 'لا يوجد',
-        notes: 'يوم عمل عادي',
-        loan: '0'
-      }),
-      loan: '0'
-    },
-    {
-      emp_name: 'وائل محمد',
-      arc_date: yesterday,
-      data_json: JSON.stringify({
-        name: 'وائل محمد',
-        date: yesterday,
-        start_t: '09:00 AM',
-        end_t: '06:00 PM',
-        overtime: '1',
-        discount: 'لا يوجد',
-        notes: 'يوم عمل مع ساعة إضافية',
-        loan: '0'
-      }),
-      loan: '0'
-    },
-    {
-      emp_name: 'وائل محمد',
-      arc_date: today,
-      data_json: JSON.stringify({
-        name: 'وائل محمد',
-        date: today,
-        start_t: '08:30 AM',
-        end_t: '04:30 PM',
-        overtime: '0.5',
-        discount: 'لا يوجد',
-        notes: 'يوم عمل عادي',
-        loan: '100'
-      }),
-      loan: '100'
-    }
-  ];
-  
-  let completed = 0;
-  let hasError = false;
-  
-  sampleData.forEach(data => {
-    db.run(`INSERT INTO archive (emp_name, arc_date, data_json, loan) VALUES (?,?,?,?)`,
-      [data.emp_name, data.arc_date, data.data_json, data.loan], (err) => {
-        if (err) {
-          console.error('Error inserting:', err);
-          hasError = true;
-        }
-        completed++;
-        if (completed === sampleData.length) {
-          if (hasError) {
-            res.json({ success: false, message: 'حدث خطأ في إضافة بعض البيانات' });
-          } else {
-            res.json({ success: true, message: 'تم إضافة 3 أيام عمل تجريبية بنجاح' });
-          }
-        }
-      });
-  });
 });
 
 // ============= دالة حساب ساعات العمل =============
