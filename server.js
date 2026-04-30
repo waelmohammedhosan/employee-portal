@@ -27,7 +27,7 @@ function getDbPath() {
 const dbPath = getDbPath();
 console.log('📁 مسار قاعدة البيانات:', dbPath);
 
-// ============= إنشاء قاعدة البيانات =============
+// ============= إنشاء قاعدة البيانات والجداول =============
 const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
@@ -62,13 +62,14 @@ db.serialize(() => {
   // إضافة أعمدة جديدة
   db.run("ALTER TABLE archive ADD COLUMN loan TEXT", () => {});
   
-  // إضافة حساب تجريبي
+  // إضافة حساب تجريبي إذا كانت قاعدة البيانات فارغة
   db.get("SELECT COUNT(*) as count FROM employees_auth", (err, row) => {
     if (row && row.count === 0) {
       const hashedPassword = bcrypt.hashSync('123123', 10);
       db.run(`INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)`,
-        ['وائل محمد', '0779966565', hashedPassword]);
-      console.log('✅ تم إضافة حساب تجريبي: 0779966565 / 123123');
+        ['وائل محمد', '0779966565', hashedPassword], (err) => {
+          if (!err) console.log('✅ تم إضافة حساب تجريبي: 0779966565 / 123123');
+        });
     }
   });
 });
@@ -117,6 +118,7 @@ app.get('/api/employee/:name/reports', (req, res) => {
   db.all(`SELECT id, arc_date, data_json, loan FROM archive WHERE emp_name = ? ORDER BY arc_date DESC`,
     [name], (err, rows) => {
       if (err) {
+        console.error('خطأ في تحميل البيانات:', err);
         return res.status(500).json({ error: 'خطأ في تحميل البيانات' });
       }
       
@@ -137,6 +139,7 @@ app.get('/api/employee/:name/stats', (req, res) => {
   
   db.all("SELECT data_json, loan FROM archive WHERE emp_name = ?", [name], (err, rows) => {
     if (err) {
+      console.error('خطأ في حساب الإحصائيات:', err);
       return res.status(500).json({ error: 'خطأ في حساب الإحصائيات' });
     }
     
@@ -169,9 +172,23 @@ app.get('/api/employee/:name/info', (req, res) => {
   
   db.get("SELECT phone, id_number FROM employee_info WHERE name = ?", [name], (err, row) => {
     if (err) {
+      console.error('خطأ في تحميل المعلومات:', err);
       return res.status(500).json({ error: 'خطأ في تحميل المعلومات' });
     }
     res.json({ success: true, info: row || { phone: '', id_number: '' } });
+  });
+});
+
+// ============= API: التحقق من وجود رقم الهاتف =============
+app.get('/api/employees/check-phone/:phone', (req, res) => {
+  const { phone } = req.params;
+  
+  db.get("SELECT id FROM employees_auth WHERE phone = ?", [phone], (err, row) => {
+    if (err) {
+      res.json({ success: false, error: err.message });
+    } else {
+      res.json({ success: true, exists: !!row });
+    }
   });
 });
 
@@ -179,28 +196,47 @@ app.get('/api/employee/:name/info', (req, res) => {
 app.post('/api/employees/add', (req, res) => {
   const { name, phone, password } = req.body;
   
+  console.log('📝 محاولة إضافة حساب:', { name, phone });
+  
   if (!name || !phone || !password) {
     return res.status(400).json({ error: 'الرجاء إدخال جميع البيانات' });
   }
   
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  
-  db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
-    [name, phone, hashedPassword], function(err) {
-      if (err) {
-        res.status(500).json({ success: false, error: err.message });
-      } else {
-        res.json({ success: true, message: 'تم إضافة الحساب بنجاح' });
-      }
-    });
+  // التحقق من وجود الرقم مسبقاً
+  db.get("SELECT id FROM employees_auth WHERE phone = ?", [phone], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    if (row) {
+      return res.status(400).json({ error: 'رقم الهاتف موجود مسبقاً' });
+    }
+    
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    
+    db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
+      [name, phone, hashedPassword], function(err) {
+        if (err) {
+          console.error('❌ خطأ في الإضافة:', err);
+          res.status(500).json({ error: err.message });
+        } else {
+          console.log('✅ تم إضافة الحساب بنجاح:', name);
+          res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: this.lastID });
+        }
+      });
+  });
 });
 
 // ============= API: الحصول على جميع الحسابات =============
 app.get('/api/employees/all', (req, res) => {
+  console.log('📋 طلب الحصول على جميع الحسابات');
+  
   db.all("SELECT id, name, phone, created_at FROM employees_auth ORDER BY name", (err, rows) => {
     if (err) {
+      console.error('❌ خطأ في جلب الحسابات:', err);
       res.status(500).json({ error: err.message });
     } else {
+      console.log(`✅ تم جلب ${rows.length} حساب`);
       res.json({ success: true, accounts: rows });
     }
   });
@@ -209,6 +245,8 @@ app.get('/api/employees/all', (req, res) => {
 // ============= API: حذف حساب =============
 app.delete('/api/employees/delete/:id', (req, res) => {
   const { id } = req.params;
+  
+  console.log('🗑️ حذف حساب ID:', id);
   
   db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
     if (err) {
@@ -223,6 +261,8 @@ app.delete('/api/employees/delete/:id', (req, res) => {
 app.put('/api/employees/reset-password/:id', (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
+  
+  console.log('🔑 تغيير كلمة المرور للحساب ID:', id);
   
   const hashedPassword = bcrypt.hashSync(password, 10);
   
@@ -274,6 +314,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 ========================================`);
   console.log(`🚀 خادم الموظفين يعمل على المنفذ: ${PORT}`);
   console.log(`🚀 ========================================`);
-  console.log(`📱 الرابط: https://employee-portal-8dp0.onrender.com`);
+  console.log(`📱 رابط التطبيق: https://employee-portal-8dp0.onrender.com`);
   console.log(`📁 مسار قاعدة البيانات: ${dbPath}\n`);
 });
