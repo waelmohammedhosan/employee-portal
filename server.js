@@ -167,7 +167,7 @@ app.get('/api/employee/:name/info', (req, res) => {
   });
 });
 
-// ============= API: إضافة سجل دوام جديد (من تطبيق Desktop) =============
+// ============= API: إضافة سجل دوام جديد =============
 app.post('/api/archive/add', (req, res) => {
   const { emp_name, arc_date, data_json, prod, ret, loan } = req.body;
   
@@ -187,6 +187,23 @@ app.post('/api/archive/add', (req, res) => {
         res.json({ success: true, message: 'تم إضافة السجل بنجاح', id: this.lastID });
       }
     });
+});
+
+// ============= API: حذف سجل دوام =============
+app.delete('/api/archive/delete/:id', (req, res) => {
+  const { id } = req.params;
+  
+  console.log(`🗑️ حذف سجل دوام ID: ${id}`);
+  
+  db.run("DELETE FROM archive WHERE id = ?", [id], function(err) {
+    if (err) {
+      console.error('❌ خطأ في حذف السجل:', err);
+      res.status(500).json({ success: false, error: err.message });
+    } else {
+      console.log('✅ تم حذف السجل بنجاح من السيرفر');
+      res.json({ success: true, message: 'تم حذف السجل بنجاح' });
+    }
+  });
 });
 
 // ============= API: إدارة حسابات الموظفين =============
