@@ -4,9 +4,10 @@ const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const os = require('os');
+const fs = require('fs');
 
 const app = express();
-const PORT = 3000;
+const PORT = 5000;
 
 // Middleware
 app.use(cors());
@@ -26,7 +27,6 @@ const dbPath = getDbPath();
 console.log('📁 مسار قاعدة البيانات:', dbPath);
 
 // التحقق من وجود قاعدة البيانات
-const fs = require('fs');
 if (!fs.existsSync(dbPath)) {
   console.error('❌ قاعدة البيانات غير موجودة! يرجى تشغيل تطبيق desktop أولاً');
 } else {
@@ -84,6 +84,7 @@ app.get('/api/employee/:name/reports', (req, res) => {
   db.all(`SELECT id, arc_date, data_json, loan FROM archive WHERE emp_name = ? ORDER BY arc_date DESC`, 
     [name], (err, rows) => {
       if (err) {
+        console.error('خطأ في تحميل البيانات:', err);
         return res.status(500).json({ error: 'خطأ في تحميل البيانات' });
       }
       
@@ -104,6 +105,7 @@ app.get('/api/employee/:name/info', (req, res) => {
   
   db.get("SELECT phone, id_number FROM employee_info WHERE name = ?", [name], (err, row) => {
     if (err) {
+      console.error('خطأ في تحميل المعلومات:', err);
       return res.status(500).json({ error: 'خطأ في تحميل المعلومات' });
     }
     
@@ -117,6 +119,7 @@ app.get('/api/employee/:name/stats', (req, res) => {
   
   db.all("SELECT data_json, loan FROM archive WHERE emp_name = ?", [name], (err, rows) => {
     if (err) {
+      console.error('خطأ في حساب الإحصائيات:', err);
       return res.status(500).json({ error: 'خطأ في حساب الإحصائيات' });
     }
     
@@ -158,6 +161,24 @@ app.get('/api/check', (req, res) => {
   });
 });
 
+// ============= API: إضافة حساب تجريبي (للتسهيل) =============
+app.get('/api/setup', (req, res) => {
+  try {
+    const hashedPassword = bcrypt.hashSync('123123', 10);
+    
+    db.run("INSERT OR IGNORE INTO employees_auth (name, phone, password) VALUES (?,?,?)", 
+      ['وائل', '0779966565', hashedPassword], function(err) {
+        if (err) {
+          res.json({ success: false, error: err.message });
+        } else {
+          res.json({ success: true, message: 'تم إضافة الحساب التجريبي بنجاح' });
+        }
+      });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
 // ============= دالة حساب ساعات العمل =============
 function calculateHours(start_t, end_t) {
   if (!start_t || !end_t) return 0;
@@ -180,7 +201,7 @@ function calculateHours(start_t, end_t) {
 }
 
 // ============= تشغيل السيرفر =============
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 ========================================`);
   console.log(`🚀 خادم الموظفين يعمل على: http://localhost:${PORT}`);
   console.log(`🚀 ========================================`);
@@ -194,7 +215,8 @@ app.listen(PORT, () => {
     } else {
       console.log(`📊 عدد الحسابات المسجلة: ${row.count}`);
       if (row.count === 0) {
-        console.log('⚠️ لا توجد حسابات! قم بإضافة حسابات من تطبيق desktop');
+        console.log('⚠️ لا توجد حسابات!');
+        console.log('💡 يمكنك إضافة حساب تجريبي عبر: http://localhost:5000/api/setup');
       } else {
         // عرض الحسابات الموجودة
         db.all("SELECT name, phone FROM employees_auth", (err, rows) => {
