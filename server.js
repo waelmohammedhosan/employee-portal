@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const Database = require('better-sqlite3');
+const Database = require('better-sqlite3');  // ✅ تأكد من هذا السطر
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const fs = require('fs');
@@ -236,9 +236,9 @@ app.get('/api/employees/check-phone/:phone', (req, res) => {
         res.json({ success: false, error: e.message });
     }
 });
-
 app.post('/api/employees/add', (req, res) => {
     const { name, phone, password } = req.body;
+    
     console.log('📝 محاولة إضافة حساب:', { name, phone });
     
     if (!name || !phone || !password) {
@@ -246,6 +246,7 @@ app.post('/api/employees/add', (req, res) => {
     }
     
     try {
+        // التحقق من وجود الرقم
         const existing = db.prepare("SELECT id FROM employees_auth WHERE phone = ?").get(phone);
         if (existing) {
             return res.status(400).json({ error: 'رقم الهاتف موجود مسبقاً' });
@@ -254,9 +255,11 @@ app.post('/api/employees/add', (req, res) => {
         const hashedPassword = bcrypt.hashSync(password, 10);
         const info = db.prepare("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)")
             .run(name, phone, hashedPassword);
+        
         res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: info.lastInsertRowid });
-    } catch(e) {
-        res.status(500).json({ error: e.message });
+    } catch (error) {
+        console.error('❌ خطأ:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
