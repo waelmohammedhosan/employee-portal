@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
 // منع الكاش لجميع الطلبات
 app.use((req, res, next) => {
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -29,7 +30,7 @@ const dbPath = getDbPath();
 console.log('📁 مسار قاعدة البيانات:', dbPath);
 
 if (!fs.existsSync(dbPath)) {
-  console.error('❌ قاعدة البيانات غير موجودة!');
+  console.error('❌ قاعدة البيانات غير موجودة! سيتم إنشاؤها');
 } else {
   console.log('✅ قاعدة البيانات موجودة');
 }
@@ -38,6 +39,7 @@ if (!fs.existsSync(dbPath)) {
 const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
+  // جدول حسابات الموظفين (للويب)
   db.run(`CREATE TABLE IF NOT EXISTS employees_auth (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -46,6 +48,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
   
+  // جدول معلومات الموظفين
   db.run(`CREATE TABLE IF NOT EXISTS employee_info (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE,
@@ -53,6 +56,7 @@ db.serialize(() => {
     id_number TEXT
   )`);
   
+  // جدول الأرشيف (سجلات الدوام)
   db.run(`CREATE TABLE IF NOT EXISTS archive (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     arc_date TEXT,
@@ -63,6 +67,7 @@ db.serialize(() => {
     loan TEXT
   )`);
   
+  // جدول بيانات اليوم الحالي
   db.run(`CREATE TABLE IF NOT EXISTS current_day (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
@@ -76,9 +81,11 @@ db.serialize(() => {
     loan TEXT
   )`);
   
+  // إضافة أعمدة جديدة
   db.run("ALTER TABLE archive ADD COLUMN loan TEXT", () => {});
   db.run("ALTER TABLE current_day ADD COLUMN loan TEXT", () => {});
   
+  // إضافة حساب تجريبي إذا كانت قاعدة البيانات فارغة
   db.get("SELECT COUNT(*) as count FROM employees_auth", (err, row) => {
     if (row && row.count === 0) {
       const hashedPassword = bcrypt.hashSync('123123', 10);
@@ -200,7 +207,6 @@ app.post('/api/employees/update', (req, res) => {
   
   db.run("DELETE FROM current_day", (err) => {
     if (err) {
-      console.error('❌ خطأ في حذف البيانات:', err);
       return res.status(500).json({ error: err.message });
     }
     
@@ -217,10 +223,7 @@ app.post('/api/employees/update', (req, res) => {
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [emp.name, emp.date, emp.start_t, emp.end_t, emp.overtime, emp.discount, emp.notes, index, emp.loan || '0'],
         (err) => {
-          if (err) {
-            console.error('❌ خطأ في إدراج الموظف:', err);
-            hasError = true;
-          }
+          if (err) hasError = true;
           completed++;
           if (completed === employees.length) {
             if (hasError) {
@@ -233,21 +236,6 @@ app.post('/api/employees/update', (req, res) => {
         }
       );
     });
-  });
-});
-
-// ============= API: حذف موظف =============
-app.delete('/api/employees/delete/:name', (req, res) => {
-  const { name } = req.params;
-  
-  console.log('🗑️ حذف موظف:', name);
-  
-  db.run("DELETE FROM current_day WHERE name = ?", [name], (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-    } else {
-      res.json({ success: true, message: 'تم حذف الموظف' });
-    }
   });
 });
 
@@ -273,13 +261,6 @@ app.post('/api/archive/add', (req, res) => {
     });
 });
 
-// ============= API: إضافة سجل دوام (نسخة أخرى للاختبار) =============
-app.post('/api/archive/add-test', (req, res) => {
-  const data = req.body;
-  console.log('📝 بيانات الاختبار:', data);
-  res.json({ success: true, message: 'تم استلام البيانات', data: data });
-});
-
 // ============= API: الحصول على جميع الموظفين الحاليين =============
 app.get('/api/current-employees', (req, res) => {
   db.all("SELECT name, date, start_t, end_t, overtime, discount, notes, loan, sort_order FROM current_day ORDER BY sort_order ASC",
@@ -303,34 +284,51 @@ app.get('/api/archive/names', (req, res) => {
   });
 });
 
-// API: حذف حساب (DELETE method)
-app.delete('/api/employees/delete/:id', (req, res) => {
+// ============= API: حذف سجل من الأرشيف =============
+app.delete('/api/archive/delete/:id', (req, res) => {
   const { id } = req.params;
   
-  console.log('🗑️ DELETE حذف حساب ID:', id);
+  console.log('🗑️ حذف سجل أرشيف ID:', id);
   
-  db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
+  db.run("DELETE FROM archive WHERE id = ?", [id], function(err) {
     if (err) {
-      console.error('❌ خطأ:', err);
-      res.json({ success: false, error: err.message });
+      res.status(500).json({ success: false, error: err.message });
     } else {
-      console.log('✅ تم حذف الحساب بنجاح');
-      res.json({ success: true, message: 'تم حذف الحساب' });
+      res.json({ success: true, message: 'تم حذف السجل' });
     }
   });
 });
 
-// API: حذف حساب (GET method - احتياطي)
-app.get('/api/employees/delete-get/:id', (req, res) => {
+// ============= API: حذف حساب موظف (من جدول employees_auth) =============
+app.delete('/api/employees/account/delete/:id', (req, res) => {
   const { id } = req.params;
   
-  console.log('🗑️ GET حذف حساب ID:', id);
+  console.log('🗑️ حذف حساب (employees_auth) ID:', id);
   
   db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
     if (err) {
-      res.json({ success: false, error: err.message });
+      console.error('❌ خطأ:', err);
+      res.status(500).json({ success: false, error: err.message });
+    } else if (this.changes === 0) {
+      res.status(404).json({ success: false, error: "الحساب غير موجود" });
     } else {
-      res.json({ success: true, message: 'تم حذف الحساب' });
+      console.log('✅ تم حذف الحساب بنجاح');
+      res.json({ success: true, message: 'تم حذف الحساب بنجاح' });
+    }
+  });
+});
+
+// ============= API: حذف موظف من جدول current_day (بيانات الدوام) =============
+app.delete('/api/employees/daily-info/delete/:name', (req, res) => {
+  const { name } = req.params;
+  
+  console.log('🗑️ حذف موظف (current_day):', name);
+  
+  db.run("DELETE FROM current_day WHERE name = ?", [name], function(err) {
+    if (err) {
+      res.status(500).json({ success: false, error: err.message });
+    } else {
+      res.json({ success: true, message: 'تم حذف الموظف' });
     }
   });
 });
@@ -348,63 +346,45 @@ app.get('/api/employees/check-phone/:phone', (req, res) => {
   });
 });
 
-// API: إضافة حساب جديد (بدون التحقق من الرقم)
 app.post('/api/employees/add', (req, res) => {
   const { name, phone, password } = req.body;
   
-  console.log('📝 استلام طلب إضافة حساب:', { name, phone });
+  console.log('📝 محاولة إضافة حساب:', { name, phone });
   
   if (!name || !phone || !password) {
     return res.status(400).json({ error: 'الرجاء إدخال جميع البيانات' });
   }
   
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  
-  // التحقق من وجود الاسم فقط
-  db.get("SELECT id FROM employees_auth WHERE name = ?", [name], (err, row) => {
+  db.get("SELECT id FROM employees_auth WHERE phone = ?", [phone], (err, row) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     
     if (row) {
-      // إذا كان الاسم موجوداً، قم بتحديثه بدلاً من إضافته
-      db.run("UPDATE employees_auth SET phone = ?, password = ? WHERE name = ?",
-        [phone, hashedPassword, name], function(err) {
-          if (err) {
-            console.error('❌ خطأ في التحديث:', err);
-            res.status(500).json({ error: err.message });
-          } else {
-            console.log('✅ تم تحديث الحساب بنجاح');
-            res.json({ success: true, message: 'تم تحديث الحساب بنجاح' });
-          }
-        });
-    } else {
-      // إضافة حساب جديد
-      db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
-        [name, phone, hashedPassword], function(err) {
-          if (err) {
-            console.error('❌ خطأ في الإضافة:', err);
-            res.status(500).json({ error: err.message });
-          } else {
-            console.log('✅ تم إضافة الحساب بنجاح');
-            res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: this.lastID });
-          }
-        });
+      return res.status(400).json({ error: 'رقم الهاتف موجود مسبقاً' });
     }
+    
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    
+    db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
+      [name, phone, hashedPassword], function(err) {
+        if (err) {
+          console.error('❌ خطأ في الإضافة:', err);
+          res.status(500).json({ error: err.message });
+        } else {
+          console.log('✅ تم إضافة الحساب بنجاح:', name);
+          res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: this.lastID });
+        }
+      });
   });
 });
 
-// API: حذف حساب (via GET)
-app.get('/api/employees/delete-get/:id', (req, res) => {
-  const { id } = req.params;
-  
-  console.log('🗑️ حذف حساب GET ID:', id);
-  
-  db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
+app.get('/api/employees/all', (req, res) => {
+  db.all("SELECT id, name, phone, created_at FROM employees_auth ORDER BY name", (err, rows) => {
     if (err) {
-      res.json({ success: false, error: err.message });
+      res.status(500).json({ error: err.message });
     } else {
-      res.json({ success: true, message: 'تم حذف الحساب' });
+      res.json({ success: true, accounts: rows });
     }
   });
 });
@@ -436,6 +416,20 @@ app.get('/api/setup', (req, res) => {
         res.json({ success: true, message: 'تم إضافة الحساب التجريبي: 0779966565 / 123123' });
       }
     });
+});
+
+// ============= API: حذف جميع الحسابات (للالاختبار) =============
+app.get('/api/employees/delete-all', (req, res) => {
+  console.log('🗑️ حذف جميع الحسابات');
+  
+  db.run("DELETE FROM employees_auth", function(err) {
+    if (err) {
+      res.json({ success: false, error: err.message });
+    } else {
+      db.run("DELETE FROM sqlite_sequence WHERE name='employees_auth'");
+      res.json({ success: true, message: `تم حذف ${this.changes} حساب` });
+    }
+  });
 });
 
 // ============= API: التحقق من صحة السيرفر =============
