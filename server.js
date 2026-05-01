@@ -272,18 +272,38 @@ app.get('/api/employees/all', (req, res) => {
     }
 });
 
+// ============= API: حذف حساب موظف =============
 app.delete('/api/employees/delete/:id', (req, res) => {
     const { id } = req.params;
+    
     console.log('🗑️ حذف حساب ID:', id);
+    
     try {
         const result = db.prepare("DELETE FROM employees_auth WHERE id = ?").run(id);
+        
         if (result.changes === 0) {
             res.status(404).json({ success: false, error: "الحساب غير موجود" });
         } else {
+            console.log('✅ تم حذف الحساب بنجاح');
             res.json({ success: true, message: 'تم حذف الحساب بنجاح' });
         }
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
+    } catch (error) {
+        console.error('❌ خطأ:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============= API: حذف جميع الحسابات (للاختبار) =============
+app.get('/api/employees/delete-all', (req, res) => {
+    console.log('🗑️ حذف جميع الحسابات');
+    
+    try {
+        const result = db.prepare("DELETE FROM employees_auth").run();
+        // إعادة تعيين الـ auto increment
+        db.prepare("DELETE FROM sqlite_sequence WHERE name='employees_auth'").run();
+        res.json({ success: true, message: `تم حذف ${result.changes} حساب` });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
