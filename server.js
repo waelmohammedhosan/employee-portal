@@ -296,17 +296,34 @@ app.get('/api/archive/names', (req, res) => {
   });
 });
 
-// ============= API: حذف سجل من الأرشيف =============
-app.delete('/api/archive/delete/:id', (req, res) => {
+// API: حذف حساب (DELETE method)
+app.delete('/api/employees/delete/:id', (req, res) => {
   const { id } = req.params;
   
-  console.log('🗑️ حذف سجل أرشيف ID:', id);
+  console.log('🗑️ DELETE حذف حساب ID:', id);
   
-  db.run("DELETE FROM archive WHERE id = ?", [id], function(err) {
+  db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
     if (err) {
-      res.status(500).json({ success: false, error: err.message });
+      console.error('❌ خطأ:', err);
+      res.json({ success: false, error: err.message });
     } else {
-      res.json({ success: true, message: 'تم حذف السجل' });
+      console.log('✅ تم حذف الحساب بنجاح');
+      res.json({ success: true, message: 'تم حذف الحساب' });
+    }
+  });
+});
+
+// API: حذف حساب (GET method - احتياطي)
+app.get('/api/employees/delete-get/:id', (req, res) => {
+  const { id } = req.params;
+  
+  console.log('🗑️ GET حذف حساب ID:', id);
+  
+  db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
+    if (err) {
+      res.json({ success: false, error: err.message });
+    } else {
+      res.json({ success: true, message: 'تم حذف الحساب' });
     }
   });
 });
@@ -324,59 +341,63 @@ app.get('/api/employees/check-phone/:phone', (req, res) => {
   });
 });
 
+// API: إضافة حساب جديد (بدون التحقق من الرقم)
 app.post('/api/employees/add', (req, res) => {
   const { name, phone, password } = req.body;
   
-  console.log('📝 محاولة إضافة حساب:', { name, phone });
+  console.log('📝 استلام طلب إضافة حساب:', { name, phone });
   
   if (!name || !phone || !password) {
     return res.status(400).json({ error: 'الرجاء إدخال جميع البيانات' });
   }
   
-  db.get("SELECT id FROM employees_auth WHERE phone = ?", [phone], (err, row) => {
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  
+  // التحقق من وجود الاسم فقط
+  db.get("SELECT id FROM employees_auth WHERE name = ?", [name], (err, row) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     
     if (row) {
-      return res.status(400).json({ error: 'رقم الهاتف موجود مسبقاً' });
-    }
-    
-    const hashedPassword = bcrypt.hashSync(password, 10);
-    
-    db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
-      [name, phone, hashedPassword], function(err) {
-        if (err) {
-          console.error('❌ خطأ في الإضافة:', err);
-          res.status(500).json({ error: err.message });
-        } else {
-          console.log('✅ تم إضافة الحساب بنجاح:', name);
-          res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: this.lastID });
-        }
-      });
-  });
-});
-
-app.get('/api/employees/all', (req, res) => {
-  db.all("SELECT id, name, phone, created_at FROM employees_auth ORDER BY name", (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
+      // إذا كان الاسم موجوداً، قم بتحديثه بدلاً من إضافته
+      db.run("UPDATE employees_auth SET phone = ?, password = ? WHERE name = ?",
+        [phone, hashedPassword, name], function(err) {
+          if (err) {
+            console.error('❌ خطأ في التحديث:', err);
+            res.status(500).json({ error: err.message });
+          } else {
+            console.log('✅ تم تحديث الحساب بنجاح');
+            res.json({ success: true, message: 'تم تحديث الحساب بنجاح' });
+          }
+        });
     } else {
-      res.json({ success: true, accounts: rows });
+      // إضافة حساب جديد
+      db.run("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)",
+        [name, phone, hashedPassword], function(err) {
+          if (err) {
+            console.error('❌ خطأ في الإضافة:', err);
+            res.status(500).json({ error: err.message });
+          } else {
+            console.log('✅ تم إضافة الحساب بنجاح');
+            res.json({ success: true, message: 'تم إضافة الحساب بنجاح', id: this.lastID });
+          }
+        });
     }
   });
 });
 
-app.delete('/api/employees/delete/:id', (req, res) => {
+// API: حذف حساب (via GET)
+app.get('/api/employees/delete-get/:id', (req, res) => {
   const { id } = req.params;
   
-  console.log('🗑️ حذف حساب ID:', id);
+  console.log('🗑️ حذف حساب GET ID:', id);
   
   db.run("DELETE FROM employees_auth WHERE id = ?", [id], function(err) {
     if (err) {
-      res.status(500).json({ success: false, error: err.message });
+      res.json({ success: false, error: err.message });
     } else {
-      res.json({ success: true, message: 'تم حذف الحساب بنجاح' });
+      res.json({ success: true, message: 'تم حذف الحساب' });
     }
   });
 });
