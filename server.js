@@ -13,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// منع الكاش لجميع الطلبات
+// منع الكاش
 app.use((req, res, next) => {
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
@@ -21,43 +21,41 @@ app.use((req, res, next) => {
     next();
 });
 
-// ============= مسار قاعدة البيانات =============
+// مسار قاعدة البيانات
 function getDbPath() {
-  return path.join(__dirname, 'factory_pro.db');
+    return path.join(__dirname, 'factory_pro.db');
 }
 
 const dbPath = getDbPath();
 console.log('📁 مسار قاعدة البيانات:', dbPath);
 
-if (!fs.existsSync(dbPath)) {
-  console.error('❌ قاعدة البيانات غير موجودة! سيتم إنشاؤها');
-} else {
-  console.log('✅ قاعدة البيانات موجودة');
+// فتح قاعدة البيانات
+let db;
+try {
+    db = new Database(dbPath);
+    console.log('✅ قاعدة البيانات متصلة');
+} catch(e) {
+    console.error('❌ خطأ في فتح قاعدة البيانات:', e.message);
+    process.exit(1);
 }
 
-// ============= الاتصال بقاعدة البيانات =============
-const db = new sqlite3.Database(dbPath);
-
-db.serialize(() => {
-  // جدول حسابات الموظفين (للويب)
-  db.run(`CREATE TABLE IF NOT EXISTS employees_auth (
+// إنشاء الجداول
+db.exec(`CREATE TABLE IF NOT EXISTS employees_auth (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     phone TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-  
-  // جدول معلومات الموظفين
-  db.run(`CREATE TABLE IF NOT EXISTS employee_info (
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS employee_info (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE,
     phone TEXT,
     id_number TEXT
-  )`);
-  
-  // جدول الأرشيف (سجلات الدوام)
-  db.run(`CREATE TABLE IF NOT EXISTS archive (
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS archive (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     arc_date TEXT,
     emp_name TEXT,
@@ -65,10 +63,9 @@ db.serialize(() => {
     prod TEXT,
     ret TEXT,
     loan TEXT
-  )`);
-  
-  // جدول بيانات اليوم الحالي
-  db.run(`CREATE TABLE IF NOT EXISTS current_day (
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS current_day (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     date TEXT,
@@ -79,25 +76,21 @@ db.serialize(() => {
     notes TEXT,
     sort_order INTEGER,
     loan TEXT
-  )`);
-  
-  // إضافة أعمدة جديدة
-  db.run("ALTER TABLE archive ADD COLUMN loan TEXT", () => {});
-  db.run("ALTER TABLE current_day ADD COLUMN loan TEXT", () => {});
-  
-  // إضافة حساب تجريبي إذا كانت قاعدة البيانات فارغة
-  db.get("SELECT COUNT(*) as count FROM employees_auth", (err, row) => {
-    if (row && row.count === 0) {
-      const hashedPassword = bcrypt.hashSync('123123', 10);
-      db.run(`INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)`,
-        ['وائل محمد', '0779966565', hashedPassword]);
-      console.log('✅ تم إضافة حساب تجريبي: 0779966565 / 123123');
-    }
-  });
-});
+)`);
+
+// إضافة حساب تجريبي
+const existing = db.prepare("SELECT COUNT(*) as count FROM employees_auth").get();
+if (existing.count === 0) {
+    const hashedPassword = bcrypt.hashSync('123123', 10);
+    db.prepare("INSERT INTO employees_auth (name, phone, password) VALUES (?,?,?)")
+        .run('وائل محمد', '0779966565', hashedPassword);
+    console.log('✅ تم إضافة حساب تجريبي: 0779966565 / 123123');
+}
 
 console.log('✅ قاعدة البيانات جاهزة');
 
+// ============= باقي APIs تبقى كما هي ولكن مع تعديل دوال قاعدة البيانات =============
+// (db.get -> db.prepare().get, db.all -> db.prepare().all, db.run -> db.prepare().run)
 // ============= API: تسجيل الدخول =============
 app.post('/api/login', (req, res) => {
   const { phone, password } = req.body;
