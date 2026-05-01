@@ -7,7 +7,7 @@ async function login() {
   const errorDiv = document.getElementById('login-error');
   
   if (!phone || !password) {
-    errorDiv.textContent = '❌ الرجاء إدخال رقم الهاتف وكلمة المرور';
+    errorDiv.textContent = ' الرجاء إدخال رقم الهاتف وكلمة المرور';
     errorDiv.style.display = 'block';
     return;
   }
