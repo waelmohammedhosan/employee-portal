@@ -207,12 +207,15 @@ app.get('/api/current-employees', (req, res) => {
     }
 });
 
-app.get('/api/archive/names', (req, res) => {
+// API: التحقق من وجود سجل مكرر
+app.get('/api/archive/check/:emp_name/:date', (req, res) => {
+    const { emp_name, date } = req.params;
+    
     try {
-        const rows = db.prepare("SELECT DISTINCT emp_name FROM archive ORDER BY emp_name").all();
-        res.json({ success: true, names: rows.map(r => r.emp_name) });
-    } catch(e) {
-        res.status(500).json({ error: e.message });
+        const existing = db.prepare("SELECT id FROM archive WHERE emp_name = ? AND arc_date = ?").get(emp_name, date);
+        res.json({ exists: !!existing });
+    } catch (error) {
+        res.json({ exists: false, error: error.message });
     }
 });
 
