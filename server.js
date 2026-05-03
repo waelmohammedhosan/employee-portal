@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const Database = require('better-sqlite3');  // ✅ تأكد من هذا السطر
+const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const fs = require('fs');
@@ -87,7 +87,28 @@ if (existing.count === 0) {
 
 console.log('✅ قاعدة البيانات جاهزة');
 
-// ============= API =============
+// ============= دوال مساعدة =============
+function calculateHours(start_t, end_t) {
+    if (!start_t || !end_t) return 0;
+    if (start_t.includes('إجازة') || start_t.includes('عطلة')) return 0;
+    
+    function timeToFloat(t) {
+        const isPM = t.includes('PM') || t.includes('مساءً') || t.includes('م');
+        let clean = t.replace(/AM|PM|\(ص\)|\(م\)|صباحاً|مساءً/g, '').trim();
+        let parts = clean.split(':');
+        let h = parseInt(parts[0]) || 0;
+        let m = parseInt(parts[1]) || 0;
+        if (isPM && h !== 12) h += 12;
+        if (!isPM && h === 12) h = 0;
+        return h + m / 60;
+    }
+    
+    let hours = timeToFloat(end_t) - timeToFloat(start_t);
+    if (hours < 0) hours += 24;
+    return Math.round(hours * 10) / 10;
+}
+
+// ============= API المصادقة =============
 app.post('/api/login', (req, res) => {
     const { phone, password } = req.body;
     console.log('📱 محاولة تسجيل دخول:', phone);
@@ -113,17 +134,132 @@ app.post('/api/login', (req, res) => {
     }
 });
 
+// ============= API الأرشيف =============
+
+// جلب جميع أسماء الأرشيف
+app.get('/api/archive/names', (req, res) => {
+    try {
+        const rows = db.prepare("SELECT DISTINCT emp_name FROM archive ORDER BY emp_name").all();
+        const names = rows.map(row => row.emp_name);
+        res.json({ success: true, names });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// جلب سجلات موظف معين من الأرشيف
 app.get('/api/employee/:name/reports', (req, res) => {
     const { name } = req.params;
     try {
         const rows = db.prepare(`SELECT id, arc_date, data_json, loan FROM archive WHERE emp_name = ? ORDER BY arc_date DESC`).all(name);
-        const reports = rows.map(row => ({ id: row.id, date: row.arc_date, data: JSON.parse(row.data_json), loan: row.loan || '0' }));
+        const reports = rows.map(row => ({ 
+            id: row.id, 
+            date: row.arc_date, 
+            data: JSON.parse(row.data_json), 
+            loan: row.loan || '0' 
+        }));
         res.json({ success: true, reports });
     } catch(e) {
         res.status(500).json({ error: 'خطأ في تحميل البيانات' });
     }
 });
 
+// جلب سجلات موظف معين (طريقة بديلة)
+app.get('/api/archive/employee/:name', (req, res) => {
+    const { name } = req.params;
+    try {
+        const rows = db.prepare(`SELECT id, arc_date, data_json, loan FROM archive WHERE emp_name = ? ORDER BY arc_date DESC`).all(name);
+        const reports = rows.map(row => ({ 
+            id: row.id, 
+            date: row.arc_date, 
+            data: JSON.parse(row.data_json), 
+            loan: row.loan || '0' 
+        }));
+        res.json({ success: true, reports });
+    } catch(e) {
+        res.status(500).json({ error: 'خطأ في تحميل البيانات' });
+    }
+});
+
+// إضافة سجل إلى الأرشيف
+app.post('/api/archive/add', (req, res) => {
+    const { emp_name, arc_date, data_json, prod, ret, loan } = req.body;
+    console.log('📝 استلام سجل دوام:', { emp_name, arc_date });
+    
+    if (!emp_name || !arc_date || !data_json) {
+        return res.status(400).json({ error: 'بيانات غير مكتملة' });
+    }
+    
+    try {
+        const info = db.prepare(`INSERT INTO archive (emp_name, arc_date, data_json, prod, ret, loan) VALUES (?,?,?,?,?,?)`)
+            .run(emp_name, arc_date, data_json, prod || '0', ret || '0', loan || '0');
+        res.json({ success: true, message: 'تم إضافة السجل', id: info.lastInsertRowid });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// التحقق من وجود سجل مكرر
+app.get('/api/archive/check/:emp_name/:date', (req, res) => {
+    const { emp_name, date } = req.params;
+    
+    try {
+        const existing = db.prepare("SELECT id FROM archive WHERE emp_name = ? AND arc_date = ?").get(emp_name, date);
+        res.json({ exists: !!existing });
+    } catch (error) {
+        res.json({ exists: false, error: error.message });
+    }
+});
+
+// حذف سجل من الأرشيف بواسطة ID
+app.delete('/api/archive/delete/:id', (req, res) => {
+    const { id } = req.params;
+    console.log('🗑️ حذف سجل أرشيف ID:', id);
+    try {
+        const result = db.prepare("DELETE FROM archive WHERE id = ?").run(id);
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'تم حذف السجل' });
+        } else {
+            res.json({ success: false, message: 'لم يتم العثور على السجل' });
+        }
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// حذف سجل من الأرشيف بواسطة الاسم والتاريخ
+app.delete('/api/archive/delete-by-date/:emp_name/:date', (req, res) => {
+    const { emp_name, date } = req.params;
+    console.log('🗑️ حذف سجل أرشيف:', { emp_name, date });
+    
+    try {
+        const result = db.prepare("DELETE FROM archive WHERE emp_name = ? AND arc_date = ?")
+            .run(emp_name, date);
+        
+        if (result.changes > 0) {
+            res.json({ success: true, message: 'تم حذف السجل', deletedCount: result.changes });
+        } else {
+            res.json({ success: false, message: 'لم يتم العثور على السجل' });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// حذف جميع سجلات موظف من الأرشيف
+app.delete('/api/archive/delete-employee/:emp_name', (req, res) => {
+    const { emp_name } = req.params;
+    console.log('🗑️ حذف جميع سجلات الموظف:', emp_name);
+    
+    try {
+        const result = db.prepare("DELETE FROM archive WHERE emp_name = ?").run(emp_name);
+        res.json({ success: true, message: 'تم حذف السجلات', deletedCount: result.changes });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// جلب إحصائيات موظف
 app.get('/api/employee/:name/stats', (req, res) => {
     const { name } = req.params;
     try {
@@ -147,16 +283,19 @@ app.get('/api/employee/:name/stats', (req, res) => {
     }
 });
 
-app.get('/api/employee/:name/info', (req, res) => {
-    const { name } = req.params;
+// ============= API إدارة الموظفين =============
+
+// جلب موظفي اليوم الحالي
+app.get('/api/current-employees', (req, res) => {
     try {
-        const row = db.prepare("SELECT phone, id_number FROM employee_info WHERE name = ?").get(name);
-        res.json({ success: true, info: row || { phone: '', id_number: '' } });
+        const rows = db.prepare("SELECT name, date, start_t, end_t, overtime, discount, notes, loan, sort_order FROM current_day ORDER BY sort_order ASC").all();
+        res.json({ success: true, employees: rows });
     } catch(e) {
-        res.status(500).json({ error: 'خطأ في تحميل المعلومات' });
+        res.status(500).json({ error: e.message });
     }
 });
 
+// تحديث قائمة الموظفين
 app.post('/api/employees/update', (req, res) => {
     const { employees } = req.body;
     console.log('📝 استلام تحديث بيانات الموظفين:', employees ? employees.length : 0);
@@ -181,64 +320,30 @@ app.post('/api/employees/update', (req, res) => {
     }
 });
 
-app.post('/api/archive/add', (req, res) => {
-    const { emp_name, arc_date, data_json, prod, ret, loan } = req.body;
-    console.log('📝 استلام سجل دوام:', { emp_name, arc_date });
-    
-    if (!emp_name || !arc_date || !data_json) {
-        return res.status(400).json({ error: 'بيانات غير مكتملة' });
-    }
-    
+// جلب معلومات موظف
+app.get('/api/employee/:name/info', (req, res) => {
+    const { name } = req.params;
     try {
-        const info = db.prepare(`INSERT INTO archive (emp_name, arc_date, data_json, prod, ret, loan) VALUES (?,?,?,?,?,?)`)
-            .run(emp_name, arc_date, data_json, prod || '0', ret || '0', loan || '0');
-        res.json({ success: true, message: 'تم إضافة السجل', id: info.lastInsertRowid });
+        const row = db.prepare("SELECT phone, id_number FROM employee_info WHERE name = ?").get(name);
+        res.json({ success: true, info: row || { phone: '', id_number: '' } });
+    } catch(e) {
+        res.status(500).json({ error: 'خطأ في تحميل المعلومات' });
+    }
+});
+
+// ============= API إدارة حسابات الموظفين =============
+
+// جلب جميع الحسابات
+app.get('/api/employees/all', (req, res) => {
+    try {
+        const rows = db.prepare("SELECT id, name, phone, created_at FROM employees_auth ORDER BY name").all();
+        res.json({ success: true, accounts: rows });
     } catch(e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/current-employees', (req, res) => {
-    try {
-        const rows = db.prepare("SELECT name, date, start_t, end_t, overtime, discount, notes, loan, sort_order FROM current_day ORDER BY sort_order ASC").all();
-        res.json({ success: true, employees: rows });
-    } catch(e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// API: التحقق من وجود سجل مكرر
-app.get('/api/archive/check/:emp_name/:date', (req, res) => {
-    const { emp_name, date } = req.params;
-    
-    try {
-        const existing = db.prepare("SELECT id FROM archive WHERE emp_name = ? AND arc_date = ?").get(emp_name, date);
-        res.json({ exists: !!existing });
-    } catch (error) {
-        res.json({ exists: false, error: error.message });
-    }
-});
-
-app.delete('/api/archive/delete/:id', (req, res) => {
-    const { id } = req.params;
-    console.log('🗑️ حذف سجل أرشيف ID:', id);
-    try {
-        db.prepare("DELETE FROM archive WHERE id = ?").run(id);
-        res.json({ success: true, message: 'تم حذف السجل' });
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-app.get('/api/employees/check-phone/:phone', (req, res) => {
-    const { phone } = req.params;
-    try {
-        const row = db.prepare("SELECT id FROM employees_auth WHERE phone = ?").get(phone);
-        res.json({ success: true, exists: !!row });
-    } catch(e) {
-        res.json({ success: false, error: e.message });
-    }
-});
+// إضافة حساب جديد
 app.post('/api/employees/add', (req, res) => {
     const { name, phone, password } = req.body;
     
@@ -249,7 +354,6 @@ app.post('/api/employees/add', (req, res) => {
     }
     
     try {
-        // التحقق من وجود الرقم
         const existing = db.prepare("SELECT id FROM employees_auth WHERE phone = ?").get(phone);
         if (existing) {
             return res.status(400).json({ error: 'رقم الهاتف موجود مسبقاً' });
@@ -266,16 +370,45 @@ app.post('/api/employees/add', (req, res) => {
     }
 });
 
-app.get('/api/employees/all', (req, res) => {
+// تحديث حساب (الاسم، رقم الهاتف، كلمة المرور)
+app.put('/api/employees/update/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, phone, password } = req.body;
+    
+    console.log('📝 تحديث حساب ID:', id, { name, phone });
+    
     try {
-        const rows = db.prepare("SELECT id, name, phone, created_at FROM employees_auth ORDER BY name").all();
-        res.json({ success: true, accounts: rows });
-    } catch(e) {
-        res.status(500).json({ error: e.message });
+        if (password) {
+            const hashedPassword = bcrypt.hashSync(password, 10);
+            db.prepare("UPDATE employees_auth SET name = ?, phone = ?, password = ? WHERE id = ?")
+                .run(name, phone, hashedPassword, id);
+        } else {
+            db.prepare("UPDATE employees_auth SET name = ?, phone = ? WHERE id = ?")
+                .run(name, phone, id);
+        }
+        res.json({ success: true, message: 'تم تحديث الحساب بنجاح' });
+    } catch (error) {
+        console.error('❌ خطأ:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// ============= API: حذف حساب موظف =============
+// تغيير كلمة المرور فقط
+app.put('/api/employees/reset-password/:id', (req, res) => {
+    const { id } = req.params;
+    const { password } = req.body;
+    console.log('🔑 تغيير كلمة المرور للحساب ID:', id);
+    
+    try {
+        const hashedPassword = bcrypt.hashSync(password, 10);
+        db.prepare("UPDATE employees_auth SET password = ? WHERE id = ?").run(hashedPassword, id);
+        res.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح' });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// حذف حساب
 app.delete('/api/employees/delete/:id', (req, res) => {
     const { id } = req.params;
     
@@ -296,13 +429,23 @@ app.delete('/api/employees/delete/:id', (req, res) => {
     }
 });
 
-// ============= API: حذف جميع الحسابات (للاختبار) =============
+// التحقق من وجود رقم هاتف
+app.get('/api/employees/check-phone/:phone', (req, res) => {
+    const { phone } = req.params;
+    try {
+        const row = db.prepare("SELECT id FROM employees_auth WHERE phone = ?").get(phone);
+        res.json({ success: true, exists: !!row });
+    } catch(e) {
+        res.json({ success: false, error: e.message });
+    }
+});
+
+// حذف جميع الحسابات (للاختبار فقط)
 app.get('/api/employees/delete-all', (req, res) => {
     console.log('🗑️ حذف جميع الحسابات');
     
     try {
         const result = db.prepare("DELETE FROM employees_auth").run();
-        // إعادة تعيين الـ auto increment
         db.prepare("DELETE FROM sqlite_sequence WHERE name='employees_auth'").run();
         res.json({ success: true, message: `تم حذف ${result.changes} حساب` });
     } catch (error) {
@@ -310,20 +453,9 @@ app.get('/api/employees/delete-all', (req, res) => {
     }
 });
 
-app.put('/api/employees/reset-password/:id', (req, res) => {
-    const { id } = req.params;
-    const { password } = req.body;
-    console.log('🔑 تغيير كلمة المرور للحساب ID:', id);
-    
-    try {
-        const hashedPassword = bcrypt.hashSync(password, 10);
-        db.prepare("UPDATE employees_auth SET password = ? WHERE id = ?").run(hashedPassword, id);
-        res.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح' });
-    } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
+// ============= API الإعدادات والاختبار =============
 
+// إعداد الحساب التجريبي
 app.get('/api/setup', (req, res) => {
     const hashedPassword = bcrypt.hashSync('123123', 10);
     try {
@@ -335,30 +467,12 @@ app.get('/api/setup', (req, res) => {
     }
 });
 
+// التحقق من صحة السيرفر
 app.get('/api/check', (req, res) => {
     res.json({ success: true, message: 'السيرفر يعمل بشكل صحيح', timestamp: new Date().toISOString() });
 });
 
-function calculateHours(start_t, end_t) {
-    if (!start_t || !end_t) return 0;
-    if (start_t.includes('إجازة') || start_t.includes('عطلة')) return 0;
-    
-    function timeToFloat(t) {
-        const isPM = t.includes('PM') || t.includes('مساءً') || t.includes('م');
-        let clean = t.replace(/AM|PM|\(ص\)|\(م\)|صباحاً|مساءً/g, '').trim();
-        let parts = clean.split(':');
-        let h = parseInt(parts[0]) || 0;
-        let m = parseInt(parts[1]) || 0;
-        if (isPM && h !== 12) h += 12;
-        if (!isPM && h === 12) h = 0;
-        return h + m / 60;
-    }
-    
-    let hours = timeToFloat(end_t) - timeToFloat(start_t);
-    if (hours < 0) hours += 24;
-    return Math.round(hours * 10) / 10;
-}
-
+// ============= تشغيل السيرفر =============
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 ========================================`);
     console.log(`🚀 خادم الموظفين يعمل على المنفذ: ${PORT}`);
