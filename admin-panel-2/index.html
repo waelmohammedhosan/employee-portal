@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>لوحة المدير - مصنع الريس (تعديل وحذف الدوامات)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8fafc; transition: background 0.3s; }
+        body.dark-mode { background: #0f172a; color: #e2e8f0; }
+        .admin-sidebar { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+        .employee-folder { transition: all 0.2s; cursor: pointer; border-radius: 12px; margin-bottom: 6px; padding: 10px 15px; background: rgba(255,255,255,0.05); }
+        .employee-folder:hover { background: #334155 !important; transform: translateX(-5px); }
+        .employee-folder.active { background: #f59e0b !important; color: white; }
+        .btn-danger { background: #ef4444; color: white; border: none; cursor: pointer; padding: 8px 16px; border-radius: 8px; font-weight: bold; }
+        .btn-danger:hover { background: #dc2626; transform: translateY(-2px); }
+        .btn-warning { background: #f59e0b; color: white; border: none; cursor: pointer; padding: 8px 16px; border-radius: 8px; font-weight: bold; }
+        .btn-warning:hover { background: #d97706; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: white; padding: 10px 20px; border-radius: 10px; z-index: 1000; font-size: 13px; }
+        .toast.error { background: #ef4444; }
+        .toast.warning { background: #f59e0b; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; border-radius: 1rem; width: 90%; max-width: 600px; max-height: 85vh; overflow-y: auto; padding: 1.5rem; }
+        body.dark-mode .modal-content { background: #1e293b; }
+        .form-input { width: 100%; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid #ccc; margin-top: 0.2rem; margin-bottom: 0.8rem; }
+        body.dark-mode .form-input { background: #334155; border-color: #475569; color: white; }
+        .form-label { font-size: 0.75rem; font-weight: bold; display: block; margin-top: 0.5rem; }
+        button { transition: all 0.2s; cursor: pointer; }
+        .dark-mode-toggle { position: fixed; bottom: 20px; left: 20px; background: #1c2833; color: white; border: none; border-radius: 50px; padding: 8px 15px; z-index: 99; font-size: 13px; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: #e2e8f0; padding: 8px; text-align: center; font-size: 0.75rem; }
+        .data-table td { padding: 8px; text-align: center; border-bottom: 1px solid #e2e8f0; font-size: 0.7rem; }
+        body.dark-mode .data-table th { background: #334155; color: #e2e8f0; }
+        body.dark-mode .data-table td { border-color: #334155; }
+        .table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+        .vacation-btn { background: #10b981; margin-left: 8px; }
+        .vacation-btn:hover { background: #059669; }
+    </style>
+</head>
+<body>
+    <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 الوضع الليلي</button>
+
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-80 admin-sidebar text-white flex flex-col shadow-2xl">
+            <div class="p-5">
+                <div class="flex items-center gap-3 mb-8">
+                    <div class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center"><i class="fas fa-crown text-white text-xl"></i></div>
+                    <div><h1 class="font-bold text-lg">لوحة المدير</h1><p class="text-xs text-slate-400">مصنع الريس</p></div>
+                </div>
+                <div class="mb-4"><input type="text" id="search-employee" class="w-full p-2 rounded-lg border border-white/20 bg-white/10 text-white placeholder:text-slate-400" placeholder="🔍 بحث عن موظف..."></div>
+                <div id="employees-list" class="space-y-1 max-h-[calc(100vh-250px)] overflow-y-auto"></div>
+            </div>
+            <div class="mt-auto p-5 border-t border-white/10">
+                <div class="flex items-center gap-3 p-2 bg-white/5 rounded-xl">
+                    <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center"><i class="fas fa-user-shield"></i></div>
+                    <div><p class="text-xs font-bold">المدير</p><p class="text-[9px] text-slate-400">راكان أبو اصيل</p></div>
+                    <button onclick="logout()" class="mr-auto text-xs bg-red-500 px-2 py-1 rounded">خروج</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col min-w-0">
+            <header class="h-14 bg-white border-b flex items-center justify-between px-6 sticky top-0 z-10">
+                <h2 class="font-bold text-slate-800 text-lg">إدارة الدوامات (تعديل / حذف)</h2>
+                <div class="flex items-center gap-3"><p id="live-clock" class="text-sm font-mono text-slate-600"></p><i class="fas fa-moon cursor-pointer text-slate-400 hover:text-orange-500" onclick="toggleDarkMode()"></i></div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-5">
+                <div id="selected-info" class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm mb-4">
+                    <div class="flex justify-between items-center flex-wrap gap-2">
+                        <div><i class="fas fa-user-circle text-3xl text-orange-500"></i> <span id="selected-name" class="text-xl font-bold">لم يتم اختيار موظف</span></div>
+                        <div><span id="selected-phone" class="text-slate-500"></span></div>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-4">
+                    <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                        <h3 class="font-bold"><i class="fas fa-calendar-alt ml-2 text-orange-500"></i> سجلات الدوام</h3>
+                        <div class="flex gap-2">
+                            <select id="month-filter" class="form-input w-32 text-sm" onchange="filterArchiveByMonth()">
+                                <option value="all">كل الشهور</option>
+                            </select>
+                            <button onclick="refreshArchive()" class="bg-blue-500 text-white px-3 py-1 rounded-lg text-sm"><i class="fas fa-sync-alt"></i> تحديث</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th>التاريخ</th><th>البدء</th><th>الانتهاء</th><th>إضافي</th><th>الخصم</th><th>ملاحظات</th><th>ساعات</th><th>السلفة</th><th>الإجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="archive-table-body">
+                                <tr><td colspan="9" class="text-center p-4 text-slate-400">اختر موظفاً من القائمة لعرض سجلاته<\/tr>
+                            </tbody>
+                        </tr>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- مودال تعديل الدوام (مع إضافة زر الإجازة) -->
+    <div id="edit-record-modal" class="modal">
+        <div class="modal-content">
+            <h3 class="font-bold text-lg mb-3"><i class="fas fa-edit text-orange-500"></i> تعديل سجل الدوام</h3>
+            <input type="hidden" id="edit-record-id">
+            <div>
+                <label class="form-label">التاريخ</label>
+                <input type="date" id="edit-date" class="form-input">
+            </div>
+            <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                    <label class="form-label">وقت البدء</label>
+                    <select id="edit-start" class="form-input">
+                        <option>08:00 AM</option><option>09:00 AM</option><option>10:00 AM</option><option>11:00 AM</option>
+                        <option>12:00 PM</option><option>01:00 PM</option><option>02:00 PM</option><option>03:00 PM</option><option>04:00 PM</option>
+                    </select>
+                </div>
+                <div class="flex-1">
+                    <label class="form-label">وقت الانتهاء</label>
+                    <select id="edit-end" class="form-input">
+                        <option>12:00 PM</option><option>01:00 PM</option><option>02:00 PM</option><option>03:00 PM</option>
+                        <option>04:00 PM</option><option>05:00 PM</option><option>06:00 PM</option><option>07:00 PM</option><option>08:00 PM</option>
+                    </select>
+                </div>
+                <button type="button" onclick="setVacationInModal()" class="vacation-btn text-white px-3 py-2 rounded-lg text-sm mb-1" style="background: #10b981;"><i class="fas fa-umbrella-beach"></i> إجازة</button>
+            </div>
+            <div><label class="form-label">ساعات إضافي</label><input type="number" id="edit-overtime" class="form-input" step="0.5"></div>
+            <div><label class="form-label">الخصم</label><input type="text" id="edit-discount" class="form-input"></div>
+            <div><label class="form-label">الملاحظات</label><input type="text" id="edit-notes" class="form-input"></div>
+            <div><label class="form-label">السلفة</label><input type="number" id="edit-loan" class="form-input" step="10"></div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button onclick="saveRecordEdit()" class="bg-green-600 text-white px-4 py-2 rounded-lg">حفظ التعديلات</button>
+                <button onclick="closeModal('edit-record-modal')" class="bg-gray-500 text-white px-4 py-2 rounded-lg">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://employee-portal-8dp0.onrender.com/api';
+        let employeesList = [];
+        let currentEmployee = null;
+        let currentArchiveRecords = [];
+        let currentFilterMonth = 'all';
+
+        // ============= دوال مساعدة =============
+        function showToast(msg, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type === 'error' ? 'error' : type === 'warning' ? 'warning' : ''}`;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('adminDarkMode', document.body.classList.contains('dark-mode'));
+        }
+
+        function updateClock() {
+            document.getElementById('live-clock').textContent = new Date().toLocaleTimeString('ar-EG', { hour12: true });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // ============= تحميل الحسابات =============
+        async function loadAccounts() {
+            try {
+                const res = await fetch(`${API_BASE}/employees/all?t=${Date.now()}`);
+                const data = await res.json();
+                if (data.success && data.accounts) employeesList = data.accounts;
+                else employeesList = [];
+                renderEmployeesList();
+            } catch (err) {
+                showToast('خطأ في تحميل الحسابات', 'error');
+                employeesList = [];
+                renderEmployeesList();
+            }
+        }
+
+        function renderEmployeesList() {
+            const container = document.getElementById('employees-list');
+            const search = document.getElementById('search-employee').value.toLowerCase();
+            const filtered = employeesList.filter(emp => emp.name.toLowerCase().includes(search));
+            container.innerHTML = '';
+            if (!filtered.length) {
+                container.innerHTML = '<div class="text-center text-slate-400 p-4">لا توجد حسابات</div>';
+                return;
+            }
+            filtered.forEach(emp => {
+                const div = document.createElement('div');
+                div.className = `employee-folder ${currentEmployee && currentEmployee.id === emp.id ? 'active' : ''}`;
+                div.innerHTML = `<div><i class="fas fa-folder ml-2"></i> ${emp.name}</div><div><i class="fas fa-chevron-left text-xs"></i></div>`;
+                div.onclick = () => selectEmployee(emp);
+                container.appendChild(div);
+            });
+        }
+
+        // ============= اختيار موظف وعرض دواماته =============
+        async function selectEmployee(emp) {
+            currentEmployee = emp;
+            document.getElementById('selected-name').innerHTML = `<i class="fas fa-user-circle ml-2"></i> ${emp.name}`;
+            document.getElementById('selected-phone').innerHTML = `<i class="fas fa-phone ml-1"></i> ${emp.phone}`;
+            renderEmployeesList();
+            await loadArchiveRecords(emp.name);
+        }
+
+        async function loadArchiveRecords(empName) {
+            try {
+                const res = await fetch(`${API_BASE}/employee/${encodeURIComponent(empName)}/reports?t=${Date.now()}`);
+                const data = await res.json();
+                if (data.success) {
+                    currentArchiveRecords = data.reports.map(r => ({
+                        id: r.id,
+                        date: r.date,
+                        start_t: r.data.start_t,
+                        end_t: r.data.end_t,
+                        overtime: r.data.overtime,
+                        discount: r.data.discount,
+                        notes: r.data.notes,
+                        loan: r.loan,
+                        prod: r.prod || '0',
+                        ret: r.ret || '0'
+                    }));
+                } else {
+                    currentArchiveRecords = [];
+                }
+                updateMonthFilter();
+                filterArchiveByMonth();
+            } catch (err) {
+                showToast('خطأ في تحميل السجلات', 'error');
+                currentArchiveRecords = [];
+                filterArchiveByMonth();
+            }
+        }
+
+        function updateMonthFilter() {
+            const months = [...new Set(currentArchiveRecords.map(r => r.date?.slice(0,7)))].sort().reverse();
+            const select = document.getElementById('month-filter');
+            select.innerHTML = '<option value="all">كل الشهور</option>';
+            months.forEach(m => select.innerHTML += `<option value="${m}">${m}</option>`);
+        }
+
+        function filterArchiveByMonth() {
+            currentFilterMonth = document.getElementById('month-filter').value;
+            let filtered = [...currentArchiveRecords];
+            if (currentFilterMonth !== 'all') filtered = filtered.filter(r => r.date?.startsWith(currentFilterMonth));
+            renderArchiveTable(filtered);
+        }
+
+        function refreshArchive() {
+            if (currentEmployee) loadArchiveRecords(currentEmployee.name);
+        }
+
+        function calculateHours(start_t, end_t) {
+            if (!start_t || !end_t || start_t.includes('إجازة')) return 0;
+            function timeToFloat(t) {
+                const isPM = t.includes('PM') || t.includes('مساءً');
+                let clean = t.replace(/AM|PM/g, '').trim();
+                let parts = clean.split(':');
+                let h = parseInt(parts[0]) || 0;
+                let m = parseInt(parts[1]) || 0;
+                if (isPM && h !== 12) h += 12;
+                if (!isPM && h === 12) h = 0;
+                return h + m / 60;
+            }
+            let hours = timeToFloat(end_t) - timeToFloat(start_t);
+            if (hours < 0) hours += 24;
+            return Math.round(hours * 10) / 10;
+        }
+
+        function renderArchiveTable(records) {
+            const tbody = document.getElementById('archive-table-body');
+            if (!records.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center p-4">لا توجد سجلات لهذا الموظف<\/tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            records.forEach(rec => {
+                const hours = calculateHours(rec.start_t, rec.end_t);
+                const row = tbody.insertRow();
+                row.insertCell(0).textContent = rec.date || '';
+                row.insertCell(1).textContent = rec.start_t || '';
+                row.insertCell(2).textContent = rec.end_t || '';
+                row.insertCell(3).textContent = rec.overtime || '0';
+                row.insertCell(4).textContent = rec.discount || 'لا يوجد';
+                row.insertCell(5).textContent = rec.notes || '';
+                row.insertCell(6).textContent = hours;
+                row.insertCell(7).textContent = rec.loan || '0';
+                row.insertCell(8).innerHTML = `
+                    <button onclick="openEditRecord(${rec.id})" class="bg-amber-500 text-white px-2 py-1 rounded text-xs ml-1"><i class="fas fa-edit"></i> تعديل</button>
+                    <button onclick="deleteRecord(${rec.id})" class="bg-red-500 text-white px-2 py-1 rounded text-xs"><i class="fas fa-trash"></i> حذف</button>
+                `;
+            });
+        }
+
+        // ============= دالة تعبئة حقول الإجازة في المودال =============
+        function setVacationInModal() {
+            document.getElementById('edit-start').value = 'إجازة';
+            document.getElementById('edit-end').value = 'إجازة';
+            document.getElementById('edit-overtime').value = '0';
+            document.getElementById('edit-discount').value = 'لا يوجد';
+            document.getElementById('edit-notes').value = 'إجازة';
+            showToast('تم تعيين الإجازة (يمكنك تعديل الحقول قبل الحفظ)', 'info');
+        }
+
+        // ============= تعديل الدوام (باستخدام حذف + إضافة) =============
+        async function openEditRecord(recordId) {
+            const record = currentArchiveRecords.find(r => r.id == recordId);
+            if (!record) return;
+            document.getElementById('edit-record-id').value = record.id;
+            document.getElementById('edit-date').value = record.date;
+            document.getElementById('edit-start').value = record.start_t;
+            document.getElementById('edit-end').value = record.end_t;
+            document.getElementById('edit-overtime').value = record.overtime;
+            document.getElementById('edit-discount').value = record.discount;
+            document.getElementById('edit-notes').value = record.notes;
+            document.getElementById('edit-loan').value = record.loan;
+            document.getElementById('edit-record-modal').style.display = 'flex';
+        }
+
+        async function saveRecordEdit() {
+            const id = document.getElementById('edit-record-id').value;
+            const oldRecord = currentArchiveRecords.find(r => r.id == id);
+            if (!oldRecord) {
+                showToast('لم يتم العثور على السجل', 'error');
+                return;
+            }
+
+            const newDate = document.getElementById('edit-date').value;
+            const newStart = document.getElementById('edit-start').value;
+            const newEnd = document.getElementById('edit-end').value;
+            const newOvertime = document.getElementById('edit-overtime').value;
+            const newDiscount = document.getElementById('edit-discount').value;
+            const newNotes = document.getElementById('edit-notes').value;
+            const newLoan = document.getElementById('edit-loan').value;
+
+            const password = prompt('أدخل كلمة مرور المدير للتأكيد:');
+            if (password !== '2002') {
+                showToast('كلمة المرور غير صحيحة', 'error');
+                closeModal('edit-record-modal');
+                return;
+            }
+
+            const newData = {
+                start_t: newStart,
+                end_t: newEnd,
+                overtime: newOvertime,
+                discount: newDiscount,
+                notes: newNotes
+            };
+            const prod = oldRecord.prod || '0';
+            const ret = oldRecord.ret || '0';
+            const empName = currentEmployee.name;
+
+            try {
+                // 1. حذف السجل القديم
+                const deleteRes = await fetch(`${API_BASE}/archive/delete/${id}`, { method: 'DELETE' });
+                if (!deleteRes.ok) {
+                    showToast('فشل حذف السجل القديم', 'error');
+                    return;
+                }
+
+                // 2. إضافة السجل الجديد المعدل
+                const addRes = await fetch(`${API_BASE}/archive/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        emp_name: empName,
+                        arc_date: newDate,
+                        data_json: JSON.stringify(newData),
+                        prod: prod,
+                        ret: ret,
+                        loan: newLoan
+                    })
+                });
+                const addResult = await addRes.json();
+
+                if (addResult.success) {
+                    showToast('✅ تم تعديل الدوام بنجاح', 'success');
+                    closeModal('edit-record-modal');
+                    await loadArchiveRecords(empName);
+                } else {
+                    showToast('❌ فشل إضافة السجل المعدل', 'error');
+                }
+            } catch (err) {
+                console.error('Network error:', err);
+                showToast('❌ خطأ في الاتصال بالسيرفر: ' + err.message, 'error');
+            }
+        }
+
+        // ============= حذف دوام محدد =============
+        async function deleteRecord(recordId) {
+            if (!confirm('⚠️ هل أنت متأكد من حذف هذا الدوام نهائياً؟')) return;
+            const password = prompt('أدخل كلمة مرور المدير للحذف:');
+            if (password !== '2002') {
+                showToast('كلمة المرور غير صحيحة', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/archive/delete/${recordId}`, { method: 'DELETE' });
+                const result = await res.json();
+                if (result.success) {
+                    showToast('تم حذف الدوام بنجاح', 'success');
+                    await loadArchiveRecords(currentEmployee.name);
+                } else {
+                    showToast('فشل الحذف: ' + (result.error || 'خطأ غير معروف'), 'error');
+                }
+            } catch (err) {
+                showToast('خطأ في الاتصال: ' + err.message, 'error');
+            }
+        }
+
+        // ============= أحداث البحث =============
+        document.getElementById('search-employee').addEventListener('input', () => renderEmployeesList());
+
+        // ============= خروج المدير =============
+        function logout() {
+            localStorage.removeItem('adminToken');
+            window.location.href = 'admin-login.html';
+        }
+
+        // ============= التهيئة =============
+        if (localStorage.getItem('adminDarkMode') === 'true') document.body.classList.add('dark-mode');
+        loadAccounts();
+
+        window.selectEmployee = selectEmployee;
+        window.openEditRecord = openEditRecord;
+        window.saveRecordEdit = saveRecordEdit;
+        window.deleteRecord = deleteRecord;
+        window.filterArchiveByMonth = filterArchiveByMonth;
+        window.refreshArchive = refreshArchive;
+        window.toggleDarkMode = toggleDarkMode;
+        window.logout = logout;
+        window.closeModal = closeModal;
+        window.setVacationInModal = setVacationInModal;
+    </script>
+</body>
+</html>

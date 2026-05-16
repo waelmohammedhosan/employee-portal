@@ -39,8 +39,10 @@
         .admin-header { background: linear-gradient(135deg, #1c2833 0%, #2c3e50 100%); padding: 15px 20px; border-radius: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
         .logo-icon { width: 45px; height: 45px; background: #f59e0b; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-        .print-btn { background: #4a148c; padding: 8px 16px; border-radius: 10px; color: white; border: none; cursor: pointer; font-size: 13px; }
-        .print-btn:hover { background: #6a1b9a; transform: translateY(-2px); }
+        .print-btn, .refresh-btn { background: #4a148c; padding: 8px 16px; border-radius: 10px; color: white; border: none; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .refresh-btn { background: #2c3e50; }
+        .print-btn:hover, .refresh-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .header-buttons { display: flex; gap: 10px; }
     </style>
 </head>
 <body>
@@ -70,7 +72,13 @@
         <div class="flex-1 flex flex-col min-w-0">
             <header class="h-14 bg-white border-b flex items-center justify-between px-6 sticky top-0 z-10">
                 <h2 class="font-bold text-slate-800 text-lg">📊 لوحة إدارة الموظفين</h2>
-                <div class="flex items-center gap-4"><p id="live-clock" class="text-sm font-mono text-slate-600"></p><button onclick="exportEmployeeReport()" class="print-btn"><i class="fas fa-camera ml-1"></i> حفظ التقرير</button></div>
+                <div class="flex items-center gap-4">
+                    <p id="live-clock" class="text-sm font-mono text-slate-600"></p>
+                    <div class="header-buttons">
+                        <button onclick="refreshData()" class="refresh-btn"><i class="fas fa-sync-alt ml-1"></i> تحديث</button>
+                        <button onclick="exportEmployeeReport()" class="print-btn"><i class="fas fa-camera ml-1"></i> حفظ التقرير</button>
+                    </div>
+                </div>
             </header>
 
             <main class="flex-1 overflow-y-auto p-5">
@@ -95,7 +103,7 @@
                 <div class="table-wrapper">
                     <table class="reports-table">
                         <thead><tr><th>التاريخ</th><th>البدء</th><th>الانتهاء</th><th>إضافي</th><th>الخصم</th><th>الملاحظات</th><th>ساعات</th><th>السلفة</th></tr></thead>
-                        <tbody id="reports-table-body"><tr><td colspan="8" class="text-center p-8 text-slate-400">اختر موظفاً من القائمة لعرض سجلاته</td></tr></tbody>
+                        <tbody id="reports-table-body"><tr><td colspan="8" class="text-center p-8 text-slate-400">اختر موظفاً من القائمة لعرض سجلاته<\/td><\/tr></tbody>
                     </table>
                 </div>
             </main>
@@ -113,38 +121,125 @@
 
         function calculateHours(start_t, end_t) { if (!start_t || !end_t || start_t.includes('إجازة') || start_t.includes('عطلة')) return 0; function timeToFloat(t) { const isPM = t.includes('PM') || t.includes('مساءً'); let clean = t.replace(/AM|PM/g, '').trim(); let parts = clean.split(':'); let h = parseInt(parts[0]) || 0; let m = parseInt(parts[1]) || 0; if (isPM && h !== 12) h += 12; if (!isPM && h === 12) h = 0; return h + m / 60; } let hours = timeToFloat(end_t) - timeToFloat(start_t); if (hours < 0) hours += 24; return Math.round(hours * 10) / 10; }
 
-        // استخراج قيمة الخصم من النص (محاولة استخراج رقم ريال أو ساعات)
         function extractDiscountValue(discountText) {
             if (!discountText || discountText === 'لا يوجد') return 0;
-            // البحث عن رقم في النص (مثل "50 ريال" أو "تأخير 2 ساعات" -> 2)
             const match = discountText.match(/(\d+(?:\.\d+)?)/);
-            if (match) return parseFloat(match[1]);
-            return 0;
+            return match ? parseFloat(match[1]) : 0;
         }
 
         async function loadEmployees() {
-            try { const res = await fetch(`${API_BASE}/employees/all`); const data = await res.json(); if (data.success && data.accounts) { employees = data.accounts; renderEmployeesList(); document.getElementById('employees-count').textContent = employees.length; } else { employees = []; renderEmployeesList(); } } catch(e) { showToast('خطأ في تحميل الموظفين', 'error'); employees = []; renderEmployeesList(); }
+            try { 
+                const res = await fetch(`${API_BASE}/employees/all`); 
+                const data = await res.json(); 
+                if (data.success && data.accounts) { 
+                    employees = data.accounts; 
+                    renderEmployeesList(); 
+                    document.getElementById('employees-count').textContent = employees.length; 
+                } else { 
+                    employees = []; 
+                    renderEmployeesList(); 
+                } 
+            } catch(e) { 
+                showToast('خطأ في تحميل الموظفين', 'error'); 
+                employees = []; 
+                renderEmployeesList(); 
+            }
         }
 
         function renderEmployeesList() {
-            const container = document.getElementById('employees-list'); const search = document.getElementById('search-employee').value.toLowerCase(); const filtered = employees.filter(emp => emp.name.toLowerCase().includes(search)); container.innerHTML = ''; if (filtered.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-4"><i class="fas fa-folder-open"></i> لا يوجد موظفين</div>'; return; }
-            filtered.forEach(emp => { const isActive = currentEmployee && currentEmployee.id === emp.id; const div = document.createElement('div'); div.className = `employee-folder p-3 rounded-lg flex justify-between items-center ${isActive ? 'active' : ''}`; div.style.background = isActive ? '#f59e0b' : 'rgba(255,255,255,0.05)'; div.innerHTML = `<div><i class="fas fa-folder ml-2"></i> ${emp.name}</div><div><i class="fas fa-chevron-left text-xs"></i></div>`; div.onclick = () => selectEmployee(emp); container.appendChild(div); });
+            const container = document.getElementById('employees-list'); 
+            const search = document.getElementById('search-employee').value.toLowerCase(); 
+            const filtered = employees.filter(emp => emp.name.toLowerCase().includes(search)); 
+            container.innerHTML = ''; 
+            if (filtered.length === 0) { 
+                container.innerHTML = '<div class="text-center text-slate-400 p-4"><i class="fas fa-folder-open"></i> لا يوجد موظفين</div>'; 
+                return; 
+            }
+            filtered.forEach(emp => { 
+                const isActive = currentEmployee && currentEmployee.id === emp.id; 
+                const div = document.createElement('div'); 
+                div.className = `employee-folder p-3 rounded-lg flex justify-between items-center ${isActive ? 'active' : ''}`; 
+                div.style.background = isActive ? '#f59e0b' : 'rgba(255,255,255,0.05)'; 
+                div.innerHTML = `<div><i class="fas fa-folder ml-2"></i> ${emp.name}</div><div><i class="fas fa-chevron-left text-xs"></i></div>`; 
+                div.onclick = () => selectEmployee(emp); 
+                container.appendChild(div); 
+            });
         }
 
         async function selectEmployee(emp) {
-            currentEmployee = emp; document.getElementById('selected-name').innerHTML = `<i class="fas fa-user-circle ml-2"></i> ${emp.name}`; document.getElementById('selected-phone').innerHTML = `<i class="fas fa-phone ml-1"></i> ${emp.phone}`;
+            currentEmployee = emp; 
+            document.getElementById('selected-name').innerHTML = `<i class="fas fa-user-circle ml-2"></i> ${emp.name}`; 
+            document.getElementById('selected-phone').innerHTML = `<i class="fas fa-phone ml-1"></i> ${emp.phone}`;
             document.querySelectorAll('.employee-folder').forEach(el => { el.classList.remove('active'); el.style.background = 'rgba(255,255,255,0.05)'; });
-            const activeItem = Array.from(document.querySelectorAll('.employee-folder')).find(el => el.innerHTML.includes(emp.name)); if (activeItem) { activeItem.classList.add('active'); activeItem.style.background = '#f59e0b'; }
+            const activeItem = Array.from(document.querySelectorAll('.employee-folder')).find(el => el.innerHTML.includes(emp.name)); 
+            if (activeItem) { activeItem.classList.add('active'); activeItem.style.background = '#f59e0b'; }
             await loadEmployeeReports(emp.name);
         }
 
         async function loadEmployeeReports(empName) {
-            try { const res = await fetch(`${API_BASE}/employee/${encodeURIComponent(empName)}/reports`); const data = await res.json(); if (data.success) { allReports = data.reports.map(r => ({ id: r.id, date: r.date, start_t: r.data.start_t, end_t: r.data.end_t, overtime: r.data.overtime, discount: r.data.discount, notes: r.data.notes, loan: r.loan })); updateMonthFilter(); filterReports(); calculateStats(); } else { allReports = []; filterReports(); calculateStats(); } } catch(e) { showToast('خطأ في تحميل السجلات', 'error'); allReports = []; filterReports(); calculateStats(); }
+            try { 
+                const res = await fetch(`${API_BASE}/employee/${encodeURIComponent(empName)}/reports`); 
+                const data = await res.json(); 
+                if (data.success) { 
+                    allReports = data.reports.map(r => ({ 
+                        id: r.id, 
+                        date: r.date, 
+                        start_t: r.data.start_t, 
+                        end_t: r.data.end_t, 
+                        overtime: r.data.overtime, 
+                        discount: r.data.discount, 
+                        notes: r.data.notes, 
+                        loan: r.loan 
+                    })); 
+                    updateMonthFilter(); 
+                    filterReports(); 
+                    calculateStats(); 
+                } else { 
+                    allReports = []; 
+                    filterReports(); 
+                    calculateStats(); 
+                } 
+            } catch(e) { 
+                showToast('خطأ في تحميل السجلات', 'error'); 
+                allReports = []; 
+                filterReports(); 
+                calculateStats(); 
+            }
         }
 
-        function updateMonthFilter() { const months = [...new Set(allReports.map(r => r.date?.slice(0,7)))].sort().reverse(); const select = document.getElementById('month-filter'); select.innerHTML = '<option value="all">كل الشهور</option>'; months.forEach(m => select.innerHTML += `<option value="${m}">${m}</option>`); }
-        function filterReports() { const month = document.getElementById('month-filter').value; filteredReports = month === 'all' ? [...allReports] : allReports.filter(r => r.date?.startsWith(month)); renderReportsTable(); }
-        function renderReportsTable() { const tbody = document.getElementById('reports-table-body'); if (!filteredReports || filteredReports.length === 0) { tbody.innerHTML = '</table><td colspan="8" class="text-center p-8 text-slate-400">لا توجد سجلات دوام لهذا الموظف<\/td><\/tr>'; return; } tbody.innerHTML = ''; filteredReports.forEach(rec => { const hours = calculateHours(rec.start_t, rec.end_t); const row = tbody.insertRow(); row.insertCell(0).textContent = rec.date || ''; row.insertCell(1).textContent = rec.start_t || ''; row.insertCell(2).textContent = rec.end_t || ''; row.insertCell(3).textContent = rec.overtime || '0'; row.insertCell(4).textContent = rec.discount || 'لا يوجد'; row.insertCell(5).textContent = rec.notes || ''; row.insertCell(6).textContent = hours; row.insertCell(7).textContent = rec.loan || '0'; }); }
+        function updateMonthFilter() { 
+            const months = [...new Set(allReports.map(r => r.date?.slice(0,7)))].sort().reverse(); 
+            const select = document.getElementById('month-filter'); 
+            select.innerHTML = '<option value="all">كل الشهور</option>'; 
+            months.forEach(m => select.innerHTML += `<option value="${m}">${m}</option>`); 
+        }
+
+        function filterReports() { 
+            const month = document.getElementById('month-filter').value; 
+            filteredReports = month === 'all' ? [...allReports] : allReports.filter(r => r.date?.startsWith(month)); 
+            renderReportsTable(); 
+        }
+
+        function renderReportsTable() { 
+            const tbody = document.getElementById('reports-table-body'); 
+            if (!filteredReports || filteredReports.length === 0) { 
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد سجلات دوام لهذا الموظف<\/td><\/tr>'; 
+                return; 
+            } 
+            tbody.innerHTML = ''; 
+            filteredReports.forEach(rec => { 
+                const hours = calculateHours(rec.start_t, rec.end_t); 
+                const row = tbody.insertRow(); 
+                row.insertCell(0).textContent = rec.date || ''; 
+                row.insertCell(1).textContent = rec.start_t || ''; 
+                row.insertCell(2).textContent = rec.end_t || ''; 
+                row.insertCell(3).textContent = rec.overtime || '0'; 
+                row.insertCell(4).textContent = rec.discount || 'لا يوجد'; 
+                row.insertCell(5).textContent = rec.notes || ''; 
+                row.insertCell(6).textContent = hours; 
+                row.insertCell(7).textContent = rec.loan || '0'; 
+            }); 
+        }
 
         function calculateStats() {
             let totalHours = 0, totalOvertime = 0, totalVacation = 0, totalLoans = 0, totalDiscounts = 0;
@@ -155,7 +250,6 @@
                 else totalHours += workHours;
                 totalOvertime += parseFloat(rec.overtime) || 0;
                 totalLoans += parseFloat(rec.loan) || 0;
-                // حساب الخصومات: استخراج القيمة من حقل الخصم
                 totalDiscounts += extractDiscountValue(rec.discount);
             });
             document.getElementById('emp-hours').textContent = totalHours.toFixed(1);
@@ -165,12 +259,53 @@
             document.getElementById('emp-discounts').textContent = totalDiscounts;
         }
 
-        async function exportEmployeeReport() { if (!currentEmployee) { showToast('الرجاء اختيار موظف أولاً', 'warning'); return; } if (!filteredReports || filteredReports.length === 0) { showToast('لا توجد بيانات للتصدير', 'warning'); return; } const element = document.querySelector('main'); const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }); const link = document.createElement('a'); link.download = `تقرير_${currentEmployee.name}_${new Date().toISOString().slice(0,10)}.png`; link.href = canvas.toDataURL(); link.click(); showToast('✅ تم حفظ التقرير بنجاح'); }
+        async function exportEmployeeReport() { 
+            if (!currentEmployee) { showToast('الرجاء اختيار موظف أولاً', 'warning'); return; } 
+            if (!filteredReports || filteredReports.length === 0) { showToast('لا توجد بيانات للتصدير', 'warning'); return; } 
+            const element = document.querySelector('main'); 
+            const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }); 
+            const link = document.createElement('a'); 
+            link.download = `تقرير_${currentEmployee.name}_${new Date().toISOString().slice(0,10)}.png`; 
+            link.href = canvas.toDataURL(); 
+            link.click(); 
+            showToast('✅ تم حفظ التقرير بنجاح'); 
+        }
 
-        if (localStorage.getItem('adminDarkMode') === 'true') { document.body.classList.add('dark-mode'); document.querySelector('.dark-mode-toggle').innerHTML = '☀️ الوضع النهاري'; }
+        // دالة التحديث الجديدة
+        async function refreshData() {
+            showToast('جاري تحديث البيانات...', 'info');
+            await loadEmployees();  // إعادة تحميل قائمة الموظفين
+            if (currentEmployee) {
+                // إذا كان هناك موظف محدد، أعد تحميل تقاريره
+                const found = employees.find(emp => emp.id === currentEmployee.id);
+                if (found) {
+                    await selectEmployee(found);
+                } else {
+                    // إذا تم حذف الموظف الحالي أو تغير، أعد تعيين الاختيار
+                    currentEmployee = null;
+                    document.getElementById('selected-name').innerHTML = '👤 لم يتم اختيار موظف';
+                    document.getElementById('selected-phone').innerHTML = '';
+                    document.getElementById('reports-table-body').innerHTML = '<tr><td colspan="8" class="text-center p-8 text-slate-400">اختر موظفاً من القائمة لعرض سجلاته</td></tr>';
+                    document.getElementById('emp-hours').textContent = '0';
+                    document.getElementById('emp-overtime').textContent = '0';
+                    document.getElementById('emp-vacation').textContent = '0';
+                    document.getElementById('emp-loans').textContent = '0';
+                    document.getElementById('emp-discounts').textContent = '0';
+                }
+            }
+            showToast('تم تحديث البيانات بنجاح', 'success');
+        }
+
+        if (localStorage.getItem('adminDarkMode') === 'true') { 
+            document.body.classList.add('dark-mode'); 
+            document.querySelector('.dark-mode-toggle').innerHTML = '☀️ الوضع النهاري'; 
+        }
         document.getElementById('search-employee').addEventListener('input', () => renderEmployeesList());
         loadEmployees();
-        window.toggleDarkMode = toggleDarkMode; window.filterReports = filterReports; window.exportEmployeeReport = exportEmployeeReport;
+        window.toggleDarkMode = toggleDarkMode; 
+        window.filterReports = filterReports; 
+        window.exportEmployeeReport = exportEmployeeReport;
+        window.refreshData = refreshData;
     </script>
 </body>
 </html>
