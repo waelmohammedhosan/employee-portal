@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>لوحة المدير - مصنع الريس</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8fafc; transition: all 0.3s; overflow: hidden; }
+        body.dark-mode { background: #0f172a; color: #e2e8f0; }
+        .admin-sidebar { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); transition: all 0.3s; }
+        body.dark-mode .admin-sidebar { background: linear-gradient(135deg, #0f172a 0%, #020617 100%); }
+        .employee-folder { transition: all 0.2s; cursor: pointer; border-radius: 12px; margin-bottom: 6px; }
+        .employee-folder:hover { background: #334155 !important; transform: translateX(-5px); }
+        .employee-folder.active { background: #f59e0b !important; color: white; }
+        .stat-card { background: linear-gradient(135deg, #1e293b, #334155); border-radius: 1rem; padding: 1rem; transition: all 0.3s; }
+        body.dark-mode .stat-card { background: linear-gradient(135deg, #334155, #1e293b); }
+        .stat-card:hover { transform: translateY(-5px); }
+        .reports-table { width: 100%; border-collapse: collapse; }
+        .reports-table th { background: #f59e0b; color: #1c2833; padding: 10px; font-size: 13px; position: sticky; top: 0; font-weight: bold; }
+        .reports-table td { padding: 8px; text-align: center; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+        body.dark-mode .reports-table td { border-color: #334155; }
+        .reports-table tr:hover { background: rgba(245,158,11,0.1); }
+        .employees-list { max-height: calc(100vh - 200px); overflow-y: auto; }
+        .table-wrapper { max-height: 400px; overflow-y: auto; overflow-x: auto; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 18px; border-radius: 10px; z-index: 1100; animation: slideIn 0.3s; color: white; font-size: 13px; }
+        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .search-input { padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; width: 100%; }
+        body.dark-mode .search-input { background: #334155; border-color: #475569; color: white; }
+        .dark-mode-toggle { position: fixed; bottom: 20px; left: 20px; background: #1c2833; color: white; border-radius: 50px; padding: 8px 15px; z-index: 100; font-size: 13px; cursor: pointer; border: none; }
+        .mini-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+        .mini-stat { background: rgba(245,158,11,0.1); border-radius: 12px; padding: 12px; text-align: center; border: 1px solid rgba(245,158,11,0.3); }
+        .mini-stat .value { font-size: 22px; font-weight: bold; color: #f59e0b; }
+        .mini-stat .label { font-size: 11px; color: #64748b; margin-top: 4px; }
+        body.dark-mode .mini-stat .label { color: #94a3b8; }
+        .admin-header { background: linear-gradient(135deg, #1c2833 0%, #2c3e50 100%); padding: 15px 20px; border-radius: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+        .logo-area { display: flex; align-items: center; gap: 12px; }
+        .logo-icon { width: 45px; height: 45px; background: #f59e0b; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+        .print-btn { background: #4a148c; padding: 8px 16px; border-radius: 10px; color: white; border: none; cursor: pointer; font-size: 13px; }
+        .print-btn:hover { background: #6a1b9a; transform: translateY(-2px); }
+    </style>
+</head>
+<body>
+    <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌙 الوضع الليلي</button>
+
+    <div class="flex h-screen">
+        <!-- السايدبار الجانبي -->
+        <aside class="w-80 admin-sidebar text-white flex flex-col shadow-2xl">
+            <div class="p-5">
+                <div class="flex items-center gap-3 mb-6 pb-4 border-b border-white/10">
+                    <div class="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center"><i class="fas fa-user-tie text-white text-xl"></i></div>
+                    <div><h2 class="font-bold text-lg">راكان أبو اصيل</h2><p class="text-xs text-slate-400">مدير المصنع</p></div>
+                </div>
+                <div class="flex items-center justify-between mb-4"><h3 class="text-sm font-bold"><i class="fas fa-folder-open ml-2"></i> الموظفين</h3><span class="text-xs text-slate-400" id="employees-count">0</span></div>
+                <div class="mb-4"><input type="text" id="search-employee" class="search-input bg-white/10 text-white border-white/20" placeholder="🔍 بحث عن موظف..."></div>
+                <div id="employees-list" class="employees-list space-y-1"></div>
+            </div>
+            <div class="mt-auto p-5 border-t border-white/10">
+                <div class="flex items-center gap-3 p-2 bg-white/5 rounded-xl">
+                    <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center"><i class="fas fa-building"></i></div>
+                    <div><p class="text-xs">مصنع الريس</p><p class="text-[9px] text-slate-400">لإنتاج وتوزيع الفحم</p></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- المحتوى الرئيسي -->
+        <div class="flex-1 flex flex-col min-w-0">
+            <header class="h-14 bg-white border-b flex items-center justify-between px-6 sticky top-0 z-10">
+                <h2 class="font-bold text-slate-800 text-lg">📊 لوحة إدارة الموظفين</h2>
+                <div class="flex items-center gap-4"><p id="live-clock" class="text-sm font-mono text-slate-600"></p><button onclick="exportEmployeeReport()" class="print-btn"><i class="fas fa-camera ml-1"></i> حفظ التقرير</button></div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-5">
+                <div id="selected-employee-info" class="admin-header">
+                    <div class="logo-area"><div class="logo-icon"><i class="fas fa-user fa-2x"></i></div><div><div class="font-bold text-lg" id="selected-name">👤 لم يتم اختيار موظف</div><div class="text-sm text-orange-300" id="selected-phone"></div></div></div>
+                    <div><span class="text-sm"><i class="fas fa-calendar-alt ml-1"></i> <span id="current-date"></span></span></div>
+                </div>
+
+                <div class="mini-stats" id="employee-stats">
+                    <div class="mini-stat"><div class="value" id="emp-hours">0</div><div class="label">ساعات العمل</div></div>
+                    <div class="mini-stat"><div class="value" id="emp-overtime">0</div><div class="label">ساعات إضافي</div></div>
+                    <div class="mini-stat"><div class="value" id="emp-vacation">0</div><div class="label">أيام إجازة</div></div>
+                    <div class="mini-stat"><div class="value" id="emp-loans">0</div><div class="label">إجمالي السلف (₪)</div></div>
+                    <div class="mini-stat"><div class="value" id="emp-discounts">0</div><div class="label">إجمالي الخصومات (₪)</div></div>
+                </div>
+
+                <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                    <h3 class="font-bold text-lg"><i class="fas fa-table ml-2 text-orange-500"></i> سجل الدوامات</h3>
+                    <select id="month-filter" class="search-input w-36" onchange="filterReports()"><option value="all">كل الشهور</option></select>
+                </div>
+
+                <div class="table-wrapper">
+                    <table class="reports-table">
+                        <thead><tr><th>التاريخ</th><th>البدء</th><th>الانتهاء</th><th>إضافي</th><th>الخصم</th><th>الملاحظات</th><th>ساعات</th><th>السلفة</th></tr></thead>
+                        <tbody id="reports-table-body"><tr><td colspan="8" class="text-center p-8 text-slate-400">اختر موظفاً من القائمة لعرض سجلاته</td></tr></tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://employee-portal-8dp0.onrender.com/api';
+        let employees = [], currentEmployee = null, allReports = [], filteredReports = [];
+
+        function showToast(msg, type = 'success') { const t = document.createElement('div'); t.className = 'toast'; t.style.backgroundColor = type === 'success' ? '#10b981' : '#ef4444'; t.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${msg}`; document.body.appendChild(t); setTimeout(() => t.remove(), 3000); }
+        function toggleDarkMode() { document.body.classList.toggle('dark-mode'); localStorage.setItem('adminDarkMode', document.body.classList.contains('dark-mode')); const btn = document.querySelector('.dark-mode-toggle'); btn.innerHTML = document.body.classList.contains('dark-mode') ? '☀️ الوضع النهاري' : '🌙 الوضع الليلي'; }
+        function updateClock() { document.getElementById('live-clock').textContent = new Date().toLocaleTimeString('ar-EG', { hour12: true }); document.getElementById('current-date').textContent = new Date().toLocaleDateString('ar-EG'); }
+        setInterval(updateClock, 1000); updateClock();
+
+        function calculateHours(start_t, end_t) { if (!start_t || !end_t || start_t.includes('إجازة') || start_t.includes('عطلة')) return 0; function timeToFloat(t) { const isPM = t.includes('PM') || t.includes('مساءً'); let clean = t.replace(/AM|PM/g, '').trim(); let parts = clean.split(':'); let h = parseInt(parts[0]) || 0; let m = parseInt(parts[1]) || 0; if (isPM && h !== 12) h += 12; if (!isPM && h === 12) h = 0; return h + m / 60; } let hours = timeToFloat(end_t) - timeToFloat(start_t); if (hours < 0) hours += 24; return Math.round(hours * 10) / 10; }
+
+        // استخراج قيمة الخصم من النص (محاولة استخراج رقم ريال أو ساعات)
+        function extractDiscountValue(discountText) {
+            if (!discountText || discountText === 'لا يوجد') return 0;
+            // البحث عن رقم في النص (مثل "50 ريال" أو "تأخير 2 ساعات" -> 2)
+            const match = discountText.match(/(\d+(?:\.\d+)?)/);
+            if (match) return parseFloat(match[1]);
+            return 0;
+        }
+
+        async function loadEmployees() {
+            try { const res = await fetch(`${API_BASE}/employees/all`); const data = await res.json(); if (data.success && data.accounts) { employees = data.accounts; renderEmployeesList(); document.getElementById('employees-count').textContent = employees.length; } else { employees = []; renderEmployeesList(); } } catch(e) { showToast('خطأ في تحميل الموظفين', 'error'); employees = []; renderEmployeesList(); }
+        }
+
+        function renderEmployeesList() {
+            const container = document.getElementById('employees-list'); const search = document.getElementById('search-employee').value.toLowerCase(); const filtered = employees.filter(emp => emp.name.toLowerCase().includes(search)); container.innerHTML = ''; if (filtered.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 p-4"><i class="fas fa-folder-open"></i> لا يوجد موظفين</div>'; return; }
+            filtered.forEach(emp => { const isActive = currentEmployee && currentEmployee.id === emp.id; const div = document.createElement('div'); div.className = `employee-folder p-3 rounded-lg flex justify-between items-center ${isActive ? 'active' : ''}`; div.style.background = isActive ? '#f59e0b' : 'rgba(255,255,255,0.05)'; div.innerHTML = `<div><i class="fas fa-folder ml-2"></i> ${emp.name}</div><div><i class="fas fa-chevron-left text-xs"></i></div>`; div.onclick = () => selectEmployee(emp); container.appendChild(div); });
+        }
+
+        async function selectEmployee(emp) {
+            currentEmployee = emp; document.getElementById('selected-name').innerHTML = `<i class="fas fa-user-circle ml-2"></i> ${emp.name}`; document.getElementById('selected-phone').innerHTML = `<i class="fas fa-phone ml-1"></i> ${emp.phone}`;
+            document.querySelectorAll('.employee-folder').forEach(el => { el.classList.remove('active'); el.style.background = 'rgba(255,255,255,0.05)'; });
+            const activeItem = Array.from(document.querySelectorAll('.employee-folder')).find(el => el.innerHTML.includes(emp.name)); if (activeItem) { activeItem.classList.add('active'); activeItem.style.background = '#f59e0b'; }
+            await loadEmployeeReports(emp.name);
+        }
+
+        async function loadEmployeeReports(empName) {
+            try { const res = await fetch(`${API_BASE}/employee/${encodeURIComponent(empName)}/reports`); const data = await res.json(); if (data.success) { allReports = data.reports.map(r => ({ id: r.id, date: r.date, start_t: r.data.start_t, end_t: r.data.end_t, overtime: r.data.overtime, discount: r.data.discount, notes: r.data.notes, loan: r.loan })); updateMonthFilter(); filterReports(); calculateStats(); } else { allReports = []; filterReports(); calculateStats(); } } catch(e) { showToast('خطأ في تحميل السجلات', 'error'); allReports = []; filterReports(); calculateStats(); }
+        }
+
+        function updateMonthFilter() { const months = [...new Set(allReports.map(r => r.date?.slice(0,7)))].sort().reverse(); const select = document.getElementById('month-filter'); select.innerHTML = '<option value="all">كل الشهور</option>'; months.forEach(m => select.innerHTML += `<option value="${m}">${m}</option>`); }
+        function filterReports() { const month = document.getElementById('month-filter').value; filteredReports = month === 'all' ? [...allReports] : allReports.filter(r => r.date?.startsWith(month)); renderReportsTable(); }
+        function renderReportsTable() { const tbody = document.getElementById('reports-table-body'); if (!filteredReports || filteredReports.length === 0) { tbody.innerHTML = '</table><td colspan="8" class="text-center p-8 text-slate-400">لا توجد سجلات دوام لهذا الموظف<\/td><\/tr>'; return; } tbody.innerHTML = ''; filteredReports.forEach(rec => { const hours = calculateHours(rec.start_t, rec.end_t); const row = tbody.insertRow(); row.insertCell(0).textContent = rec.date || ''; row.insertCell(1).textContent = rec.start_t || ''; row.insertCell(2).textContent = rec.end_t || ''; row.insertCell(3).textContent = rec.overtime || '0'; row.insertCell(4).textContent = rec.discount || 'لا يوجد'; row.insertCell(5).textContent = rec.notes || ''; row.insertCell(6).textContent = hours; row.insertCell(7).textContent = rec.loan || '0'; }); }
+
+        function calculateStats() {
+            let totalHours = 0, totalOvertime = 0, totalVacation = 0, totalLoans = 0, totalDiscounts = 0;
+            allReports.forEach(rec => {
+                const workHours = calculateHours(rec.start_t, rec.end_t);
+                const isVacation = rec.notes && (rec.notes.includes('إجازة') || rec.notes.includes('عطلة'));
+                if (isVacation) totalVacation++;
+                else totalHours += workHours;
+                totalOvertime += parseFloat(rec.overtime) || 0;
+                totalLoans += parseFloat(rec.loan) || 0;
+                // حساب الخصومات: استخراج القيمة من حقل الخصم
+                totalDiscounts += extractDiscountValue(rec.discount);
+            });
+            document.getElementById('emp-hours').textContent = totalHours.toFixed(1);
+            document.getElementById('emp-overtime').textContent = totalOvertime;
+            document.getElementById('emp-vacation').textContent = totalVacation;
+            document.getElementById('emp-loans').textContent = totalLoans;
+            document.getElementById('emp-discounts').textContent = totalDiscounts;
+        }
+
+        async function exportEmployeeReport() { if (!currentEmployee) { showToast('الرجاء اختيار موظف أولاً', 'warning'); return; } if (!filteredReports || filteredReports.length === 0) { showToast('لا توجد بيانات للتصدير', 'warning'); return; } const element = document.querySelector('main'); const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }); const link = document.createElement('a'); link.download = `تقرير_${currentEmployee.name}_${new Date().toISOString().slice(0,10)}.png`; link.href = canvas.toDataURL(); link.click(); showToast('✅ تم حفظ التقرير بنجاح'); }
+
+        if (localStorage.getItem('adminDarkMode') === 'true') { document.body.classList.add('dark-mode'); document.querySelector('.dark-mode-toggle').innerHTML = '☀️ الوضع النهاري'; }
+        document.getElementById('search-employee').addEventListener('input', () => renderEmployeesList());
+        loadEmployees();
+        window.toggleDarkMode = toggleDarkMode; window.filterReports = filterReports; window.exportEmployeeReport = exportEmployeeReport;
+    </script>
+</body>
+</html>

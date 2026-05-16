@@ -1,0 +1,46 @@
+{
+  "name": "employee-portal",
+  "version": "1.0.0",
+  "description": "بوابة الموظفين - مصنع الريس",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5"
+  },
+  "build": {
+    "appId": "com.coal.app",
+    "productName": "مصنع الريس - نظام إدارة الدوام",
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "مصنع الريس",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "license": "LICENSE.txt"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache",
+      "!dist"
+    ]
+  }
+}
