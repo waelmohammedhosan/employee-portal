@@ -14,6 +14,7 @@
     "better-sqlite3": "^9.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5"
+<<<<<<< HEAD
   },
   "build": {
     "appId": "com.coal.app",
@@ -42,5 +43,7 @@
       "!node_modules/.cache",
       "!dist"
     ]
+=======
+>>>>>>> 755065207fc0ffe8fad602803bc13ec23e65647c
   }
 }
